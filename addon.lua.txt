@@ -1,0 +1,278 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local VirtualInput = game:GetService("VirtualInputManager")
+local Camera = workspace.CurrentCamera
+
+local plr = Players.LocalPlayer
+local key = "dcmoilha"
+local aimbot = false
+local esp = false
+local radius = 150
+
+-- Ẩn cursor toàn bộ (fix mất nút di chuyển + cursor thừa)
+UserInputService.MouseIconEnabled = false  -- Ẩn icon chuột (desktop + mobile ảo)
+
+-- Key system (giữ nguyên)
+local kg = Instance.new("ScreenGui", CoreGui) kg.IgnoreGuiInset = true
+local kf = Instance.new("Frame", kg) kf.Size = UDim2.new(0, 320, 0, 140) kf.Position = UDim2.new(0.5, -160, 0.5, -70)
+kf.BackgroundColor3 = Color3.fromRGB(20,20,25) kf.BorderSizePixel = 0
+Instance.new("UICorner", kf).CornerRadius = UDim.new(0,16)
+Instance.new("UIStroke", kf).Color = Color3.fromRGB(220,40,40)
+
+local kt = Instance.new("TextLabel", kf) kt.Size = UDim2.new(1,0,0,40) kt.BackgroundTransparency = 1
+kt.Text = "NHẬP KEY" kt.TextColor3 = Color3.new(1,1,1) kt.Font = Enum.Font.GothamBold kt.TextSize = 22
+
+local kb = Instance.new("TextBox", kf) kb.Size = UDim2.new(0.9,0,0,45) kb.Position = UDim2.new(0.05,0,0.35,0)
+kb.BackgroundColor3 = Color3.fromRGB(35,35,40) kb.TextColor3 = Color3.new(1,1,1) kb.PlaceholderText = "dcmoilha"
+kb.Font = Enum.Font.Gotham kb.TextSize = 18
+Instance.new("UICorner", kb).CornerRadius = UDim.new(0,10)
+
+local sb = Instance.new("TextButton", kf) sb.Size = UDim2.new(0.5,0,0,45) sb.Position = UDim2.new(0.25,0,0.7,0)
+sb.BackgroundColor3 = Color3.fromRGB(40,180,40) sb.Text = "XÁC NHẬN" sb.TextColor3 = Color3.new(1,1,1)
+sb.Font = Enum.Font.GothamBold sb.TextSize = 18
+Instance.new("UICorner", sb).CornerRadius = UDim.new(0,10)
+
+sb.MouseButton1Click:Connect(function()
+    if kb.Text:lower() == key:lower() then
+        kg:Destroy()
+        spawn(mainMenu)
+    else
+        kb.Text = "" kb.PlaceholderText = "SAI KEY!"
+        TweenService:Create(kf, TweenInfo.new(0.12,0,Enum.EasingStyle.Quad,0,true), {BackgroundColor3 = Color3.fromRGB(80,20,20)}):Play()
+        task.wait(0.6) kf.BackgroundColor3 = Color3.fromRGB(20,20,25)
+    end
+end)
+
+function mainMenu()
+    local mg = Instance.new("ScreenGui", CoreGui) mg.IgnoreGuiInset = true
+    local mc = Instance.new("Frame", mg) mc.Name = "MainCircle"
+    mc.Size = UDim2.new(0, 88, 0, 88) mc.Position = UDim2.new(0.08, 0, 0.08, 0)
+    mc.BackgroundColor3 = Color3.fromRGB(220,30,30) mc.BorderSizePixel = 0
+    Instance.new("UICorner", mc).CornerRadius = UDim.new(1,0)
+    Instance.new("UIStroke", mc).Color = Color3.new(1,1,1)
+
+    local ml = Instance.new("TextLabel", mc) ml.Size = UDim2.new(1,0,1,0) ml.BackgroundTransparency = 1
+    ml.Text = "⚡" ml.TextColor3 = Color3.new(1,1,1) ml.Font = Enum.Font.GothamBold ml.TextSize = 42
+
+    local subOpen = false
+    local subGui, subFrame, aimCircle
+
+    local function createSub()
+        subGui = Instance.new("ScreenGui", CoreGui) subGui.IgnoreGuiInset = true
+        subFrame = Instance.new("Frame", subGui) subFrame.Size = UDim2.new(0, 260, 0, 300)
+        subFrame.Position = UDim2.new(0.5, -130, 0.5, -150) subFrame.BackgroundColor3 = Color3.fromRGB(18,18,22)
+        Instance.new("UICorner", subFrame).CornerRadius = UDim.new(0,14)
+        Instance.new("UIStroke", subFrame).Color = Color3.fromRGB(60,60,80)
+
+        local title = Instance.new("TextLabel", subFrame) title.Size = UDim2.new(1,0,0,45) title.BackgroundColor3 = Color3.fromRGB(30,30,38)
+        title.Text = " CHẾT VÌ CÁI CHẾT " title.TextColor3 = Color3.new(1,0.2,0.2) title.Font = Enum.Font.GothamBold title.TextSize = 18
+        Instance.new("UICorner", title).CornerRadius = UDim.new(0,14)
+
+        local close = Instance.new("TextButton", subFrame) close.Size = UDim2.new(0,36,0,36) close.Position = UDim2.new(1,-42,0,5)
+        close.BackgroundColor3 = Color3.fromRGB(220,40,40) close.Text = "X" close.TextColor3 = Color3.new(1,1,1)
+        close.Font = Enum.Font.GothamBold close.TextSize = 20
+        Instance.new("UICorner", close).CornerRadius = UDim.new(0.5,0)
+
+        close.MouseButton1Click:Connect(function()
+            subOpen = false
+            subGui.Enabled = false
+            aimCircle.Visible = false
+            TweenService:Create(mc, TweenInfo.new(0.25,Enum.EasingStyle.Back), {Size = UDim2.new(0,88,0,88), BackgroundColor3 = Color3.fromRGB(220,30,30)}):Play()
+            ml.Text = "⚡"
+        end)
+
+        -- Aimbot toggle
+        local abtn = Instance.new("TextButton", subFrame) abtn.Size = UDim2.new(0.9,0,0,50) abtn.Position = UDim2.new(0.05,0,0.18,0)
+        abtn.BackgroundColor3 = Color3.fromRGB(50,50,60) abtn.Text = "Aimbot: OFF" abtn.TextColor3 = Color3.new(1,1,1)
+        abtn.Font = Enum.Font.GothamBold abtn.TextSize = 17
+        Instance.new("UICorner", abtn).CornerRadius = UDim.new(0,10)
+
+        abtn.MouseButton1Click:Connect(function()
+            aimbot = not aimbot
+            abtn.Text = "Aimbot: " .. (aimbot and "ON" or "OFF")
+            abtn.BackgroundColor3 = aimbot and Color3.fromRGB(40,160,40) or Color3.fromRGB(50,50,60)
+            aimCircle.Visible = aimbot
+        end)
+
+        -- Radius control (giữ nguyên)
+
+        local rlbl = Instance.new("TextLabel", subFrame) rlbl.Size = UDim2.new(0.6,0,0,40) rlbl.Position = UDim2.new(0.05,0,0.38,0)
+        rlbl.BackgroundTransparency = 1 rlbl.Text = "Bán kính: " .. radius rlbl.TextColor3 = Color3.new(1,1,1) rlbl.Font = Enum.Font.Gotham rlbl.TextSize = 16
+
+        local minus = Instance.new("TextButton", subFrame) minus.Size = UDim2.new(0,50,0,40) minus.Position = UDim2.new(0.68,0,0.38,0)
+        minus.BackgroundColor3 = Color3.fromRGB(180,60,60) minus.Text = "-" minus.TextColor3 = Color3.new(1,1,1)
+        minus.Font = Enum.Font.GothamBold minus.TextSize = 20
+        Instance.new("UICorner", minus).CornerRadius = UDim.new(0,8)
+
+        local plus = Instance.new("TextButton", subFrame) plus.Size = UDim2.new(0,50,0,40) plus.Position = UDim2.new(0.88,0,0.38,0)
+        plus.BackgroundColor3 = Color3.fromRGB(60,180,60) plus.Text = "+" plus.TextColor3 = Color3.new(1,1,1)
+        plus.Font = Enum.Font.GothamBold plus.TextSize = 20
+        Instance.new("UICorner", plus).CornerRadius = UDim.new(0,8)
+
+        minus.MouseButton1Click:Connect(function()
+            radius = math.max(50, radius - 20)
+            rlbl.Text = "Bán kính: " .. radius
+        end)
+
+        plus.MouseButton1Click:Connect(function()
+            radius = math.min(400, radius + 20)
+            rlbl.Text = "Bán kính: " .. radius
+        end)
+
+        -- ESP toggle (giữ nguyên)
+        local espbtn = Instance.new("TextButton", subFrame) espbtn.Size = UDim2.new(0.9,0,0,50) espbtn.Position = UDim2.new(0.05,0,0.55,0)
+        espbtn.BackgroundColor3 = Color3.fromRGB(50,50,60) espbtn.Text = "ESP: OFF" espbtn.TextColor3 = Color3.new(1,1,1)
+        espbtn.Font = Enum.Font.GothamBold espbtn.TextSize = 17
+        Instance.new("UICorner", espbtn).CornerRadius = UDim.new(0,10)
+
+        espbtn.MouseButton1Click:Connect(function()
+            esp = not esp
+            espbtn.Text = "ESP: " .. (esp and "ON" or "OFF")
+            espbtn.BackgroundColor3 = esp and Color3.fromRGB(40,160,40) or Color3.fromRGB(50,50,60)
+        end)
+
+        -- Vòng tròn aim giữa màn hình (tăng visible)
+        aimCircle = Drawing.new("Circle")
+        aimCircle.Thickness = 3.5  -- Dễ thấy hơn
+        aimCircle.NumSides = 100
+        aimCircle.Radius = radius
+        aimCircle.Color = Color3.fromRGB(255, 80, 80)
+        aimCircle.Transparency = 0.6  -- Ít mờ
+        aimCircle.Filled = false
+        aimCircle.Visible = false
+    end
+
+    createSub()
+
+    -- Xử lý chạm/kéo vòng tròn chính (giữ nguyên)
+    local dragMain = false
+    local dragStartMain, startPosMain
+    local tapStartTime = 0
+    local tapThreshold = 0.25
+    local moveThreshold = 20
+
+    mc.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragMain = true
+            dragStartMain = input.Position
+            startPosMain = mc.Position
+            tapStartTime = tick()
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragMain and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStartMain
+            mc.Position = UDim2.new(startPosMain.X.Scale, startPosMain.X.Offset + delta.X, startPosMain.Y.Scale, startPosMain.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dragMain then
+                dragMain = false
+                local delta = input.Position - dragStartMain
+                local distMoved = delta.Magnitude
+                local timeHeld = tick() - tapStartTime
+
+                if timeHeld < tapThreshold and distMoved < moveThreshold then
+                    subOpen = not subOpen
+                    subGui.Enabled = subOpen
+                    aimCircle.Visible = aimbot  -- Chỉ phụ thuộc aimbot ON
+                    if subOpen then
+                        TweenService:Create(mc, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(0,110,0,110), BackgroundColor3 = Color3.fromRGB(40,220,40)}):Play()
+                        ml.Text = "ON"
+                    else
+                        TweenService:Create(mc, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(0,88,0,88), BackgroundColor3 = Color3.fromRGB(220,30,30)}):Play()
+                        ml.Text = "⚡"
+                    end
+                end
+            end
+        end
+    end)
+
+    -- Di chuyển sub-menu (giữ nguyên)
+    local dragSub = false
+    local dragStartSub, startPosSub
+
+    subFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragSub = true
+            dragStartSub = input.Position
+            startPosSub = subFrame.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragSub and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStartSub
+            subFrame.Position = UDim2.new(startPosSub.X.Scale, startPosSub.X.Offset + delta.X, startPosSub.Y.Scale, startPosSub.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragSub = false
+        end
+    end)
+
+    -- Loop fix lỗi mất điều khiển
+    local lastShot = 0
+    local shotCooldown = 0.15  -- Tăng delay để tránh lock input
+
+    RunService.RenderStepped:Connect(function()
+        if aimCircle then
+            aimCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            aimCircle.Radius = radius
+            aimCircle.Visible = aimbot  -- Luôn hiện khi aimbot ON
+        end
+
+        if not aimbot and not esp then return end
+
+        local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        local targetFound = false
+
+        for _, v in Players:GetPlayers() do
+            if v == plr or not v.Character or not v.Character:FindFirstChild("Head") or not v.Character:FindFirstChild("HumanoidRootPart") or v.Character.Humanoid.Health <= 0 then continue end
+
+            local head = v.Character.Head
+            local root = v.Character.HumanoidRootPart
+            local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+            if not onScreen then continue end
+
+            local distToCenter = (Vector2.new(headPos.X, headPos.Y) - center).Magnitude
+
+            if aimbot and distToCenter <= radius then
+                targetFound = true
+                local targetPos = head.Position + Vector3.new(0, 0.4, 0) + head.Velocity * 0.08
+                local newCFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
+                Camera.CFrame = Camera.CFrame:Lerp(newCFrame, 0.35)  -- Smooth aim, giữ điều khiển
+            end
+
+            if esp then
+                local dist = (plr.Character.HumanoidRootPart.Position - root.Position).Magnitude
+                local hp = math.floor(v.Character.Humanoid.Health) .. "/" .. math.floor(v.Character.Humanoid.MaxHealth)
+                local text = Drawing.new("Text")
+                text.Text = hp .. "   " .. math.floor(dist) .. "m"
+                text.Position = Vector2.new(headPos.X, headPos.Y - 40)
+                text.Size = 16 text.Center = true text.Outline = true
+                text.Color = Color3.fromRGB(255, 255, 100) text.Transparency = 1
+                text.Visible = true
+                task.delay(0.05, function() text:Remove() end)
+            end
+        end
+
+        -- Triggerbot chỉ khi có target + cooldown + không spam
+        if aimbot and targetFound and tick() - lastShot > shotCooldown and not UserInputService.TouchEnabled then  -- Tránh spam mobile
+            VirtualInput:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            task.wait(0.01)  -- Short press
+            VirtualInput:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            lastShot = tick()
+        end
+    end)
+end
+
+print("Script loaded - Key: dcmoilha")

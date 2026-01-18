@@ -1,0 +1,650 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+
+-- Player
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+-- Main GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TreoTienHub"
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- ==============================================
+-- HIỆU ỨNG CHỮ "TREO TIỀN VUI VẺ"
+-- ==============================================
+
+local function showTextAnimation()
+    -- Tạo container cho hiệu ứng chữ
+    local textContainer = Instance.new("Frame")
+    textContainer.Name = "TextAnimationContainer"
+    textContainer.BackgroundTransparency = 1
+    textContainer.Size = UDim2.new(1, 0, 1, 0)
+    textContainer.Position = UDim2.new(0, 0, 0, 0)
+    textContainer.Visible = true
+    textContainer.ZIndex = 100
+    textContainer.Parent = ScreenGui
+    
+    -- Tạo nền mờ
+    local background = Instance.new("Frame")
+    background.Name = "AnimationBackground"
+    background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    background.BackgroundTransparency = 0.7
+    background.Size = UDim2.new(1, 0, 1, 0)
+    background.Position = UDim2.new(0, 0, 0, 0)
+    background.ZIndex = 99
+    background.Parent = textContainer
+    
+    -- Các từ trong cụm "TREO TIỀN VUI VẺ"
+    local words = {"TREO", "TIỀN", "VUI", "VẺ"}
+    local wordLabels = {}
+    
+    -- Vị trí ban đầu (giữa màn hình)
+    local centerPosition = UDim2.new(0.5, 0, 0.4, 0)
+    local spacing = 80  -- Khoảng cách giữa các từ
+    
+    -- Tạo từng chữ
+    for i, word in ipairs(words) do
+        local wordLabel = Instance.new("TextLabel")
+        wordLabel.Name = "Word_" .. word
+        wordLabel.Text = word
+        wordLabel.Font = Enum.Font.GothamBlack
+        wordLabel.TextSize = 48
+        wordLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+        wordLabel.BackgroundTransparency = 1
+        wordLabel.Size = UDim2.new(0, 0, 0, 0)
+        wordLabel.Position = centerPosition
+        wordLabel.TextTransparency = 1
+        wordLabel.TextStrokeTransparency = 0.8
+        wordLabel.TextStrokeColor3 = Color3.fromRGB(0, 100, 200)
+        wordLabel.ZIndex = 101
+        wordLabel.Parent = textContainer
+        
+        table.insert(wordLabels, wordLabel)
+    end
+    
+    -- Hàm hiển thị từng chữ
+    local function showWordByWord()
+        for i, label in ipairs(wordLabels) do
+            -- Tính toán vị trí
+            local offsetX = (i - 2.5) * spacing  -- -2.5 để căn giữa
+            local targetPosition = UDim2.new(0.5, offsetX, 0.4, 0)
+            local targetSize = UDim2.new(0, 120, 0, 60)
+            
+            -- Hiệu ứng xuất hiện
+            label.Visible = true
+            
+            -- Hiệu ứng mở rộng và hiện
+            local expandTween = TweenService:Create(label, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = targetSize,
+                Position = targetPosition,
+                TextTransparency = 0
+            })
+            
+            expandTween:Play()
+            expandTween.Completed:Wait()
+            
+            -- Chờ giữa các từ
+            if i < #words then
+                task.wait(0.3)
+            end
+        end
+        
+        -- Giữ text trong 1.5 giây
+        task.wait(1.5)
+        
+        -- Hiệu ứng ẩn từng chữ (ngược lại)
+        for i = #wordLabels, 1, -1 do
+            local label = wordLabels[i]
+            
+            -- Hiệu ứng thu nhỏ và ẩn
+            local shrinkTween = TweenService:Create(label, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Size = UDim2.new(0, 0, 0, 0),
+                Position = centerPosition,
+                TextTransparency = 1
+            })
+            
+            shrinkTween:Play()
+            shrinkTween.Completed:Wait()
+            
+            -- Chờ giữa các từ
+            if i > 1 then
+                task.wait(0.15)
+            end
+        end
+        
+        -- Ẩn nền
+        local fadeOut = TweenService:Create(background, TweenInfo.new(0.5), {
+            BackgroundTransparency = 1
+        })
+        fadeOut:Play()
+        fadeOut.Completed:Wait()
+        
+        -- Xóa container
+        textContainer:Destroy()
+        
+        return true
+    end
+    
+    -- Bắt đầu hiệu ứng
+    return showWordByWord()
+end
+
+-- ==============================================
+-- MENU TRÒN VÀ MENU BÊN TRONG
+-- ==============================================
+
+-- Biến toàn cục
+local floatingButton, circularMenu
+local isAFK = false
+local afkStartTime = 0
+local totalAFKTime = 0
+local dragging = false
+
+-- Tạo Menu Tròn với Menu Bên Trong
+local function createCircularMenuWithInnerMenu()
+    -- ==============================================
+    -- 1. MENU TRÒN CHÍNH (CÓ THỂ KÉO)
+    -- ==============================================
+    
+    floatingButton = Instance.new("TextButton")
+    floatingButton.Name = "FloatingMenuButton"
+    floatingButton.Size = UDim2.new(0, 70, 0, 70)
+    floatingButton.Position = UDim2.new(0, 30, 0.5, -35)
+    floatingButton.Text = "🎮"
+    floatingButton.Font = Enum.Font.GothamBlack
+    floatingButton.TextSize = 32
+    floatingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    floatingButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)  -- Màu đỏ nổi bật
+    floatingButton.BackgroundTransparency = 0.2
+    floatingButton.BorderSizePixel = 0
+    floatingButton.Visible = true
+    floatingButton.ZIndex = 90
+    floatingButton.Parent = ScreenGui
+
+    -- Make it circular
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = floatingButton
+
+    -- Add glow effect
+    local glow = Instance.new("UIStroke")
+    glow.Color = Color3.fromRGB(255, 100, 100)
+    glow.Thickness = 3
+    glow.Transparency = 0.3
+    glow.Parent = floatingButton
+
+    -- ==============================================
+    -- 2. MENU BÊN TRONG (HIỆN KHI NHẤN VÀO MENU TRÒN)
+    -- ==============================================
+    
+    circularMenu = Instance.new("Frame")
+    circularMenu.Name = "CircularMenu"
+    circularMenu.Size = UDim2.new(0, 350, 0, 400)  -- Menu bên trong
+    circularMenu.Position = UDim2.new(0.5, -175, 0.5, -200)
+    circularMenu.BackgroundColor3 = Color3.fromRGB(25, 30, 45)
+    circularMenu.BackgroundTransparency = 0.1
+    circularMenu.BorderSizePixel = 0
+    circularMenu.Visible = false  -- Ẩn ban đầu
+    circularMenu.ZIndex = 85
+    circularMenu.Parent = ScreenGui
+
+    -- Viền menu tròn
+    local menuBorder = Instance.new("UIStroke")
+    menuBorder.Color = Color3.fromRGB(255, 50, 50)
+    menuBorder.Thickness = 3
+    menuBorder.Parent = circularMenu
+
+    -- Góc bo tròn cho menu
+    local menuCorner = Instance.new("UICorner")
+    menuCorner.CornerRadius = UDim.new(0.05, 0)
+    menuCorner.Parent = circularMenu
+
+    -- ==============================================
+    -- 3. HEADER CỦA MENU BÊN TRONG
+    -- ==============================================
+    
+    local header = Instance.new("TextLabel")
+    header.Name = "Header"
+    header.Text = "💰 TREO TIỀN VUI VẺ"
+    header.Font = Enum.Font.GothamBlack
+    header.TextSize = 24
+    header.TextColor3 = Color3.fromRGB(255, 255, 100)
+    header.BackgroundColor3 = Color3.fromRGB(35, 40, 60)
+    header.Size = UDim2.new(1, 0, 0, 60)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.BorderSizePixel = 0
+    header.ZIndex = 86
+    header.Parent = circularMenu
+
+    -- Nút đóng menu bên trong
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Text = "✕"
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.TextSize = 20
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    closeButton.Size = UDim2.new(0, 35, 0, 35)
+    closeButton.Position = UDim2.new(1, -40, 0, 12)
+    closeButton.BorderSizePixel = 0
+    closeButton.ZIndex = 87
+    closeButton.Parent = circularMenu
+
+    -- ==============================================
+    -- 4. KHU VỰC HIỂN THỊ THÔNG TIN
+    -- ==============================================
+    
+    local infoArea = Instance.new("Frame")
+    infoArea.Name = "InfoArea"
+    infoArea.BackgroundColor3 = Color3.fromRGB(30, 35, 55)
+    infoArea.Size = UDim2.new(1, -30, 0, 120)
+    infoArea.Position = UDim2.new(0, 15, 0, 70)
+    infoArea.BorderSizePixel = 0
+    infoArea.ZIndex = 86
+    infoArea.Parent = circularMenu
+
+    -- Timer AFK
+    local timerLabel = Instance.new("TextLabel")
+    timerLabel.Name = "TimerLabel"
+    timerLabel.Text = "⏱️ AFK: 0s"
+    timerLabel.Font = Enum.Font.GothamBold
+    timerLabel.TextSize = 22
+    timerLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+    timerLabel.BackgroundTransparency = 1
+    timerLabel.Size = UDim2.new(1, 0, 0, 40)
+    timerLabel.Position = UDim2.new(0, 0, 0, 10)
+    timerLabel.ZIndex = 87
+    timerLabel.Parent = infoArea
+
+    -- Tổng thời gian
+    local totalTimeLabel = Instance.new("TextLabel")
+    totalTimeLabel.Name = "TotalTimeLabel"
+    totalTimeLabel.Text = "📈 Tổng: 0 phút"
+    totalTimeLabel.Font = Enum.Font.GothamMedium
+    totalTimeLabel.TextSize = 16
+    totalTimeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    totalTimeLabel.BackgroundTransparency = 1
+    totalTimeLabel.Size = UDim2.new(1, 0, 0, 30)
+    totalTimeLabel.Position = UDim2.new(0, 0, 0, 50)
+    totalTimeLabel.ZIndex = 87
+    totalTimeLabel.Parent = infoArea
+
+    -- FPS Display
+    local fpsLabel = Instance.new("TextLabel")
+    fpsLabel.Name = "FPSLabel"
+    fpsLabel.Text = "🎮 FPS: 60"
+    fpsLabel.Font = Enum.Font.GothamBold
+    fpsLabel.TextSize = 18
+    fpsLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+    fpsLabel.BackgroundTransparency = 1
+    fpsLabel.Size = UDim2.new(1, 0, 0, 30)
+    fpsLabel.Position = UDim2.new(0, 0, 0, 85)
+    fpsLabel.ZIndex = 87
+    fpsLabel.Parent = infoArea
+
+    -- ==============================================
+    -- 5. KHU VỰC ĐIỀU KHIỂN
+    -- ==============================================
+    
+    local controlArea = Instance.new("Frame")
+    controlArea.Name = "ControlArea"
+    controlArea.BackgroundColor3 = Color3.fromRGB(30, 35, 55)
+    controlArea.Size = UDim2.new(1, -30, 0, 170)
+    controlArea.Position = UDim2.new(0, 15, 0, 200)
+    controlArea.BorderSizePixel = 0
+    controlArea.ZIndex = 86
+    controlArea.Parent = circularMenu
+
+    -- Nút bắt đầu treo
+    local startButton = Instance.new("TextButton")
+    startButton.Name = "StartButton"
+    startButton.Text = "🟢 BẮT ĐẦU TREO TIỀN"
+    startButton.Font = Enum.Font.GothamBold
+    startButton.TextSize = 16
+    startButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    startButton.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+    startButton.Size = UDim2.new(1, 0, 0, 45)
+    startButton.Position = UDim2.new(0, 0, 0, 10)
+    startButton.BorderSizePixel = 0
+    startButton.ZIndex = 87
+    startButton.Parent = controlArea
+
+    -- Nút dừng treo
+    local stopButton = Instance.new("TextButton")
+    stopButton.Name = "StopButton"
+    stopButton.Text = "⛔ DỪNG TREO TIỀN"
+    stopButton.Font = Enum.Font.GothamBold
+    stopButton.TextSize = 16
+    stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    stopButton.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    stopButton.Size = UDim2.new(1, 0, 0, 45)
+    stopButton.Position = UDim2.new(0, 0, 0, 65)
+    stopButton.BorderSizePixel = 0
+    stopButton.ZIndex = 87
+    stopButton.Parent = controlArea
+
+    -- Toggle Auto Mode
+    local autoModeButton = Instance.new("TextButton")
+    autoModeButton.Name = "AutoModeButton"
+    autoModeButton.Text = "⚙️ CHẾ ĐỘ TỰ ĐỘNG: BẬT"
+    autoModeButton.Font = Enum.Font.GothamMedium
+    autoModeButton.TextSize = 14
+    autoModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    autoModeButton.BackgroundColor3 = Color3.fromRGB(60, 60, 100)
+    autoModeButton.Size = UDim2.new(1, 0, 0, 35)
+    autoModeButton.Position = UDim2.new(0, 0, 0, 120)
+    autoModeButton.BorderSizePixel = 0
+    autoModeButton.ZIndex = 87
+    autoModeButton.Parent = controlArea
+
+    -- ==============================================
+    -- 6. CHỨC NĂNG HỆ THỐNG
+    -- ==============================================
+
+    -- FPS Counter
+    local function updateFPS()
+        local fps = math.floor(1/RunService.RenderStepped:Wait())
+        fpsLabel.Text = "🎮 FPS: " .. fps
+        return fps
+    end
+
+    -- Anti-Ban Methods
+    local function performAntiBan()
+        while isAFK do
+            -- Update display every second
+            local currentTime = tick()
+            local afkDuration = math.floor(currentTime - afkStartTime)
+            timerLabel.Text = "⏱️ AFK: " .. afkDuration .. "s"
+            
+            -- Update total time
+            totalAFKTime = totalAFKTime + 1
+            local totalMinutes = math.floor(totalAFKTime / 60)
+            totalTimeLabel.Text = "📈 Tổng: " .. totalMinutes .. " phút"
+            
+            -- Anti-ban actions every 20-30 seconds
+            if afkDuration % math.random(20, 30) == 0 then
+                -- Random movement
+                if character and humanoidRootPart then
+                    local randomAngle = math.random(0, 360)
+                    local moveDistance = 0.3
+                    
+                    local currentCFrame = humanoidRootPart.CFrame
+                    local newPosition = currentCFrame.Position + 
+                        Vector3.new(
+                            math.cos(math.rad(randomAngle)) * moveDistance,
+                            0,
+                            math.sin(math.rad(randomAngle)) * moveDistance
+                        )
+                    
+                    humanoidRootPart.CFrame = CFrame.new(newPosition)
+                end
+                
+                -- Random key press
+                local keys = {"W", "A", "S", "D", "Space"}
+                local randomKey = keys[math.random(1, #keys)]
+                
+                VirtualInputManager:SendKeyEvent(true, randomKey, false, nil)
+                task.wait(0.05)
+                VirtualInputManager:SendKeyEvent(false, randomKey, false, nil)
+                
+                -- Visual feedback
+                timerLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+                task.wait(0.3)
+                timerLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            end
+            
+            -- FPS update
+            if afkDuration % 15 == 0 then
+                updateFPS()
+            end
+            
+            task.wait(1)
+        end
+    end
+
+    -- Start AFK Function
+    local function startAFK()
+        if isAFK then return end
+        
+        isAFK = true
+        afkStartTime = tick()
+        
+        -- Change button states
+        startButton.Text = "🟡 ĐANG TREO TIỀN..."
+        startButton.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+        
+        -- Start anti-ban loop
+        spawn(performAntiBan)
+        
+        print("💰 Bắt đầu treo tiền với chế độ chống ban...")
+    end
+
+    -- Stop AFK Function
+    local function stopAFK()
+        if not isAFK then return end
+        
+        isAFK = false
+        
+        -- Reset buttons
+        startButton.Text = "🟢 BẮT ĐẦU TREO TIỀN"
+        startButton.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+        
+        -- Calculate final time
+        local afkDuration = math.floor(tick() - afkStartTime)
+        local minutes = math.floor(afkDuration / 60)
+        
+        print("⛔ Đã dừng treo tiền")
+        print("⏱️ Thời gian treo: " .. minutes .. " phút")
+    end
+
+    -- Toggle Auto Mode
+    local autoMode = true
+    autoModeButton.MouseButton1Click:Connect(function()
+        autoMode = not autoMode
+        autoModeButton.Text = autoMode and "⚙️ CHẾ ĐỘ TỰ ĐỘNG: BẬT" or "⚙️ CHẾ ĐỘ TỰ ĐỘNG: TẮT"
+        autoModeButton.BackgroundColor3 = autoMode and Color3.fromRGB(0, 120, 60) or Color3.fromRGB(120, 60, 60)
+        
+        print("⚙️ Chế độ tự động: " .. (autoMode and "BẬT" or "TẮT"))
+    end)
+
+    -- ==============================================
+    -- 7. EVENT HANDLERS
+    -- ==============================================
+
+    -- Nút bắt đầu/dừng
+    startButton.MouseButton1Click:Connect(startAFK)
+    stopButton.MouseButton1Click:Connect(stopAFK)
+
+    -- Nút đóng menu
+    closeButton.MouseButton1Click:Connect(function()
+        circularMenu.Visible = false
+        floatingButton.Text = "🎮"  -- Reset icon
+    end)
+
+    -- ==============================================
+    -- 8. HỆ THỐNG KÉO THẢ MENU TRÒN
+    -- ==============================================
+
+    local dragStart, buttonStart
+    local lastClickTime = 0
+
+    -- Mouse down for dragging
+    floatingButton.MouseButton1Down:Connect(function(input)
+        dragging = true
+        dragStart = Vector2.new(input.X, input.Y)
+        buttonStart = Vector2.new(floatingButton.Position.X.Offset, floatingButton.Position.Y.Offset)
+        
+        -- Visual feedback
+        floatingButton.BackgroundTransparency = 0.1
+        floatingButton.Text = "↕️"
+    end)
+
+    -- Mouse move for dragging
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local currentPos = Vector2.new(input.Position.X, input.Position.Y)
+            local delta = currentPos - dragStart
+            floatingButton.Position = UDim2.new(0, buttonStart.X + delta.X, 0, buttonStart.Y + delta.Y)
+        end
+    end)
+
+    -- Mouse up - Xử lý click
+    floatingButton.MouseButton1Up:Connect(function()
+        if dragging then
+            dragging = false
+            floatingButton.BackgroundTransparency = 0.2
+            floatingButton.Text = "🎮"
+            
+            -- Kiểm tra nếu là click (di chuyển ít)
+            local currentPos = Vector2.new(floatingButton.Position.X.Offset, floatingButton.Position.Y.Offset)
+            local moveDistance = (currentPos - buttonStart).Magnitude
+            
+            if moveDistance < 10 then  -- Nếu di chuyển ít hơn 10 pixel, coi là click
+                -- Toggle menu với hiệu ứng
+                circularMenu.Visible = not circularMenu.Visible
+                
+                if circularMenu.Visible then
+                    floatingButton.Text = "📂"
+                    -- Hiệu ứng xuất hiện menu
+                    circularMenu.Position = UDim2.new(0.5, -175, 0.5, -250)
+                    circularMenu.Size = UDim2.new(0, 10, 0, 10)
+                    
+                    local expandTween = TweenService:Create(circularMenu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(0, 350, 0, 400),
+                        Position = UDim2.new(0.5, -175, 0.5, -200)
+                    })
+                    expandTween:Play()
+                else
+                    floatingButton.Text = "🎮"
+                end
+            end
+        end
+    end)
+
+    -- Click to toggle menu (backup)
+    floatingButton.MouseButton1Click:Connect(function()
+        if not dragging then
+            circularMenu.Visible = not circularMenu.Visible
+            floatingButton.Text = circularMenu.Visible and "📂" or "🎮"
+        end
+    end)
+
+    -- ==============================================
+    -- 9. CHARACTER PROTECTION
+    -- ==============================================
+
+    player.CharacterAdded:Connect(function(newChar)
+        character = newChar
+        humanoid = character:WaitForChild("Humanoid")
+        humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+        
+        -- Nếu đang treo, tiếp tục với nhân vật mới
+        if isAFK then
+            task.wait(2)
+            startAFK()
+        end
+    end)
+
+    -- ==============================================
+    -- 10. AUTO UPDATE SYSTEM
+    -- ==============================================
+
+    -- Auto FPS update
+    spawn(function()
+        while true do
+            if not isAFK then
+                updateFPS()
+            end
+            task.wait(2)
+        end
+    end)
+
+    -- Hotkey support
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed then
+            if input.KeyCode == Enum.KeyCode.RightShift then  -- RightShift để mở menu
+                circularMenu.Visible = not circularMenu.Visible
+                floatingButton.Text = circularMenu.Visible and "📂" or "🎮"
+                
+                -- Hiệu ứng khi mở bằng hotkey
+                if circularMenu.Visible then
+                    circularMenu.Position = UDim2.new(0.5, -175, 0.5, -250)
+                    circularMenu.Size = UDim2.new(0, 10, 0, 10)
+                    
+                    local expandTween = TweenService:Create(circularMenu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(0, 350, 0, 400),
+                        Position = UDim2.new(0.5, -175, 0.5, -200)
+                    })
+                    expandTween:Play()
+                end
+            elseif input.KeyCode == Enum.KeyCode.T then  -- T để treo/dừng
+                if isAFK then
+                    stopAFK()
+                else
+                    startAFK()
+                end
+            end
+        end
+    end)
+
+    return true
+end
+
+-- ==============================================
+-- KHỞI ĐỘNG SCRIPT
+-- ==============================================
+
+-- Chạy hiệu ứng chữ đầu tiên
+spawn(function()
+    print("🎬 Đang khởi động script...")
+    local success = showTextAnimation()
+    
+    if success then
+        print("✅ Hiệu ứng hoàn tất!")
+        
+        -- Tạo menu tròn với menu bên trong
+        task.wait(0.5)
+        createCircularMenuWithInnerMenu()
+        
+        -- Hiển thị thông báo
+        local notification = Instance.new("TextLabel")
+        notification.Name = "ReadyNotification"
+        notification.Text = "✨ SCRIPT ĐÃ SẴN SÀNG ✨\n🎮 Nhấn nút tròn đỏ để mở menu"
+        notification.Font = Enum.Font.GothamBold
+        notification.TextSize = 18
+        notification.TextColor3 = Color3.fromRGB(255, 100, 100)
+        notification.BackgroundColor3 = Color3.fromRGB(0, 0, 0, 0.7)
+        notification.BackgroundTransparency = 0.3
+        notification.Size = UDim2.new(0, 350, 0, 60)
+        notification.Position = UDim2.new(0.5, -175, 0.1, 0)
+        notification.TextTransparency = 0
+        notification.ZIndex = 95
+        notification.Parent = ScreenGui
+        
+        -- Hiệu ứng fade out
+        task.wait(3)
+        local fadeOut = TweenService:Create(notification, TweenInfo.new(1.5), {
+            TextTransparency = 1,
+            BackgroundTransparency = 1
+        })
+        fadeOut:Play()
+        fadeOut.Completed:Wait()
+        notification:Destroy()
+        
+        print("🎮 Script đã sẵn sàng!")
+        print("🔴 Nút tròn đỏ đã xuất hiện")
+        print("📱 Nhấn vào nút tròn đỏ để mở/đóng menu bên trong")
+        print("🔑 Hotkeys: RightShift (Menu), T (Treo/Dừng)")
+    else
+        print("⚠️ Hiệu ứng bị lỗi, tạo menu trực tiếp...")
+        createCircularMenuWithInnerMenu()
+    end
+end)

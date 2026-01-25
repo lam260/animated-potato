@@ -1,0 +1,585 @@
+-- Vietnam Hub Script - Fix lỗi mất tên tab khi bật/tắt chức năng
+-- Nguyên nhân: Khi update text button, dùng btn.Name thay vì data.name cố định → text bị thay đổi sai
+-- Đã fix bằng cách lưu tên gốc riêng và chỉ toggle "(Bật)/(Tắt)"
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local RootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Toggles
+local toggles = {
+    autoAttack = false,
+    spin = false,
+    speed = false,
+    hitbox = false,
+    esp = false
+}
+
+-- Hitbox settings
+local hitboxSize = 10
+
+-- ESP
+local espGuis = {}
+
+-- Spin
+local spinVel = nil
+
+-- Speed variables (tăng dần không ngừng)
+local baseSpeed = 16
+local speedMultiplier = 1.0
+local maxMultiplier = 5.0
+local increaseRate = 0.05
+local isSpeeding = false
+
+-- ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "VietnamHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+-- Main Button (nhỏ gọn)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainButton"
+MainFrame.Size = UDim2.new(0, 90, 0, 50)
+MainFrame.Position = UDim2.new(0.02, 0, 0.02, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+local FlagImage = Instance.new("ImageLabel")
+FlagImage.Size = UDim2.new(1, 0, 1, 0)
+FlagImage.BackgroundTransparency = 1
+FlagImage.Image = "rbxassetid://11548089657"  -- Cờ VN
+FlagImage.Parent = MainFrame
+
+-- Sub Menu (kéo được)
+local SubFrame = Instance.new("Frame")
+SubFrame.Name = "SubMenu"
+SubFrame.Size = UDim2.new(0, 320, 0, 470) -- Tăng chiều cao để thêm ô nhập hitbox
+SubFrame.Position = UDim2.new(0.15, 0, 0.15, 0)
+SubFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+SubFrame.BackgroundTransparency = 0.15
+SubFrame.Visible = false
+SubFrame.Parent = ScreenGui
+
+local SubCorner = Instance.new("UICorner")
+SubCorner.CornerRadius = UDim.new(0, 14)
+SubCorner.Parent = SubFrame
+
+-- Rainbow viền
+local RainbowStroke = Instance.new("UIStroke")
+RainbowStroke.Thickness = 3.5
+RainbowStroke.Transparency = 0.25
+RainbowStroke.Parent = SubFrame
+
+local RainbowGradient = Instance.new("UIGradient")
+RainbowGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),
+    ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255,165,0)),
+    ColorSequenceKeypoint.new(0.4, Color3.fromRGB(0,255,0)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0,0,255)),
+    ColorSequenceKeypoint.new(0.8, Color3.fromRGB(75,0,130)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(238,130,238))
+}
+RainbowGradient.Parent = RainbowStroke
+
+RunService.Heartbeat:Connect(function(dt)
+    RainbowGradient.Rotation = (RainbowGradient.Rotation or 0) + 120 * dt
+end)
+
+-- Title với nút đóng
+local TitleFrame = Instance.new("Frame")
+TitleFrame.Size = UDim2.new(1, 0, 0, 45)
+TitleFrame.BackgroundTransparency = 1
+TitleFrame.Parent = SubFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0.8, 0, 1, 0)
+TitleLabel.Position = UDim2.new(0.1, 0, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Vietnam Hub"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 26
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Parent = TitleFrame
+
+-- Nút đóng menu (X màu đỏ)
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 30, 0, 30)
+CloseButton.Position = UDim2.new(0.9, -15, 0.5, -15)
+CloseButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 20
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Parent = TitleFrame
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseButton
+
+-- Frame nội dung để kéo (trừ phần title)
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, 0, 1, -45)
+ContentFrame.Position = UDim2.new(0, 0, 0, 45)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = SubFrame
+
+-- Tab buttons với tên gốc cố định
+local tabData = {
+    {displayName = "Auto Đánh", toggleKey = "autoAttack"},
+    {displayName = "Xoay", toggleKey = "spin"},
+    {displayName = "Speed", toggleKey = "speed"},
+    {displayName = "Hitbox", toggleKey = "hitbox"},
+    {displayName = "ESP", toggleKey = "esp"}
+}
+
+local tabButtons = {}
+for i, data in ipairs(tabData) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.88, 0, 0, 48)
+    btn.Position = UDim2.new(0.06, 0, 0, 10 + (i-1)*58)
+    btn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+    btn.Text = data.displayName .. " (Tắt)"  -- tên gốc + trạng thái
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 18
+    btn.Font = Enum.Font.GothamSemibold
+    btn.Parent = ContentFrame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = btn
+    
+    -- Lưu tên gốc để không bị mất khi update text
+    btn:SetAttribute("OriginalName", data.displayName)
+    tabButtons[data.toggleKey] = btn
+end
+
+-- Frame cho điều chỉnh Hitbox Size
+local HitboxSizeFrame = Instance.new("Frame")
+HitboxSizeFrame.Size = UDim2.new(0.88, 0, 0, 50)
+HitboxSizeFrame.Position = UDim2.new(0.06, 0, 0, 300)
+HitboxSizeFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+HitboxSizeFrame.Parent = ContentFrame
+
+local HitboxSizeCorner = Instance.new("UICorner")
+HitboxSizeCorner.CornerRadius = UDim.new(0, 8)
+HitboxSizeCorner.Parent = HitboxSizeFrame
+
+local HitboxTitle = Instance.new("TextLabel")
+HitboxTitle.Size = UDim2.new(1, 0, 0.4, 0)
+HitboxTitle.Position = UDim2.new(0, 0, 0, 0)
+HitboxTitle.BackgroundTransparency = 1
+HitboxTitle.Text = "Kích thước Hitbox:"
+HitboxTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+HitboxTitle.TextSize = 14
+HitboxTitle.Font = Enum.Font.GothamSemibold
+HitboxTitle.Parent = HitboxSizeFrame
+
+local HitboxInput = Instance.new("TextBox")
+HitboxInput.Size = UDim2.new(0.6, 0, 0.5, 0)
+HitboxInput.Position = UDim2.new(0.05, 0, 0.45, 0)
+HitboxInput.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+HitboxInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+HitboxInput.Text = tostring(hitboxSize)
+HitboxInput.TextSize = 16
+HitboxInput.PlaceholderText = "Nhập kích thước"
+HitboxInput.ClearTextOnFocus = false
+HitboxInput.Parent = HitboxSizeFrame
+
+local HitboxInputCorner = Instance.new("UICorner")
+HitboxInputCorner.CornerRadius = UDim.new(0, 4)
+HitboxInputCorner.Parent = HitboxInput
+
+local HitboxApplyButton = Instance.new("TextButton")
+HitboxApplyButton.Size = UDim2.new(0.25, 0, 0.5, 0)
+HitboxApplyButton.Position = UDim2.new(0.7, 0, 0.45, 0)
+HitboxApplyButton.BackgroundColor3 = Color3.fromRGB(60, 180, 60)
+HitboxApplyButton.Text = "Áp dụng"
+HitboxApplyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+HitboxApplyButton.TextSize = 14
+HitboxApplyButton.Font = Enum.Font.GothamSemibold
+HitboxApplyButton.Parent = HitboxSizeFrame
+
+local HitboxApplyCorner = Instance.new("UICorner")
+HitboxApplyCorner.CornerRadius = UDim.new(0, 4)
+HitboxApplyCorner.Parent = HitboxApplyButton
+
+-- Xử lý nhập kích thước hitbox
+HitboxApplyButton.MouseButton1Click:Connect(function()
+    local text = HitboxInput.Text
+    local num = tonumber(text)
+    
+    if num and num > 0 then
+        hitboxSize = num
+        HitboxInput.Text = tostring(hitboxSize)
+        
+        -- Cập nhật ngay nếu đang bật hitbox
+        if toggles.hitbox then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                    local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+                    if root then root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) end
+                    if torso then torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) end
+                end
+            end
+        end
+    else
+        HitboxInput.Text = tostring(hitboxSize)
+    end
+end)
+
+HitboxInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        HitboxApplyButton:MouseButton1Click()
+    end
+end)
+
+-- Draggable cho MainFrame (hình cờ Việt Nam)
+local mainDragging, mainDragInput, mainDragStart, mainStartPos
+
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        -- Chỉ cho phép kéo khi giữ nút
+        mainDragging = true
+        mainDragStart = input.Position
+        mainStartPos = MainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then 
+                mainDragging = false 
+            end
+        end)
+    end
+end)
+
+MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        mainDragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == mainDragInput and mainDragging then
+        local delta = input.Position - mainDragStart
+        MainFrame.Position = UDim2.new(
+            mainStartPos.X.Scale, 
+            mainStartPos.X.Offset + delta.X,
+            mainStartPos.Y.Scale, 
+            mainStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- Draggable cho SubFrame (chỉ kéo bằng TitleFrame)
+local subDragging, subDragInput, subDragStart, subStartPos
+
+TitleFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        subDragging = true
+        subDragStart = input.Position
+        subStartPos = SubFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then 
+                subDragging = false 
+            end
+        end)
+    end
+end)
+
+TitleFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        subDragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == subDragInput and subDragging then
+        local delta = input.Position - subDragStart
+        SubFrame.Position = UDim2.new(
+            subStartPos.X.Scale, 
+            subStartPos.X.Offset + delta.X,
+            subStartPos.Y.Scale, 
+            subStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- Toggle menu bằng MainFrame
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        -- Đợi một chút để phân biệt giữa click và bắt đầu kéo
+        task.wait(0.1)
+        if mainDragging then
+            -- Nếu đang kéo thì không toggle menu
+            return
+        end
+        SubFrame.Visible = not SubFrame.Visible
+    end
+end)
+
+-- Tắt toàn bộ script
+local function destroyScript()
+    -- Xóa tất cả GUI
+    ScreenGui:Destroy()
+    
+    -- Reset tất cả chức năng
+    if spinVel then
+        spinVel:Destroy()
+        spinVel = nil
+    end
+    
+    -- Reset hitbox
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local root = plr.Character:FindFirstChild("HumanoidRootPart")
+            local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+            if root then 
+                root.Size = Vector3.new(2, 2, 1) 
+                root.Transparency = 0 
+            end
+            if torso then 
+                torso.Size = Vector3.new(2, 2, 1) 
+                torso.Transparency = 0 
+            end
+        end
+    end
+    
+    -- Reset ESP
+    for _, gui in pairs(espGuis) do 
+        if gui then 
+            gui:Destroy() 
+        end 
+    end
+    espGuis = {}
+    
+    print("Vietnam Hub đã được tắt hoàn toàn!")
+end
+
+-- Đóng menu và tắt toàn bộ script bằng nút X
+CloseButton.MouseButton1Click:Connect(function()
+    destroyScript()
+end)
+
+-- Toggle chức năng
+for key, btn in pairs(tabButtons) do
+    btn.MouseButton1Click:Connect(function()
+        toggles[key] = not toggles[key]
+        
+        local originalName = btn:GetAttribute("OriginalName")
+        if toggles[key] then
+            btn.BackgroundColor3 = Color3.fromRGB(60, 220, 60)
+            btn.Text = originalName .. " (Bật)"
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+            btn.Text = originalName .. " (Tắt)"
+        end
+        
+        -- Xử lý đặc biệt
+        if key == "spin" then
+            if toggles.spin then
+                if spinVel then spinVel:Destroy() end
+                spinVel = Instance.new("BodyAngularVelocity")
+                spinVel.MaxTorque = Vector3.new(0, math.huge, 0)
+                spinVel.AngularVelocity = Vector3.new(0, 0, 0)
+                spinVel.Parent = RootPart
+            else
+                if spinVel then spinVel:Destroy() spinVel = nil end
+            end
+        end
+        
+        if key == "speed" then
+            isSpeeding = toggles.speed
+            if isSpeeding then
+                speedMultiplier = 1.0
+            end
+        end
+        
+        if key == "hitbox" then
+            if toggles.hitbox then
+                -- Khi bật hitbox, áp dụng kích thước hiện tại
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character then
+                        local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                        local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+                        if root then 
+                            root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                            root.Transparency = 0.75 
+                        end
+                        if torso then 
+                            torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                            torso.Transparency = 0.75 
+                        end
+                    end
+                end
+            else
+                -- Khi tắt hitbox, reset về kích thước gốc
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character then
+                        local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                        local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+                        if root then 
+                            root.Size = Vector3.new(2, 2, 1) 
+                            root.Transparency = 0 
+                        end
+                        if torso then 
+                            torso.Size = Vector3.new(2, 2, 1) 
+                            torso.Transparency = 0 
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Character respawn
+local function onCharAdded(char)
+    Character = char
+    Humanoid = char:WaitForChild("Humanoid")
+    RootPart = char:WaitForChild("HumanoidRootPart")
+    pcall(function()
+        RootPart:SetNetworkOwner(LocalPlayer)
+    end)
+    
+    if toggles.spin then
+        if spinVel then spinVel:Destroy() end
+        spinVel = Instance.new("BodyAngularVelocity")
+        spinVel.MaxTorque = Vector3.new(0, math.huge, 0)
+        spinVel.AngularVelocity = Vector3.new(0, 0, 0)
+        spinVel.Parent = RootPart
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(onCharAdded)
+if Character then onCharAdded(Character) end
+
+-- Speed tăng dần
+RunService.RenderStepped:Connect(function(dt)
+    if isSpeeding and RootPart and Humanoid.MoveDirection.Magnitude > 0 then
+        speedMultiplier = math.min(speedMultiplier + increaseRate * dt, maxMultiplier)
+        local currentSpeed = baseSpeed * speedMultiplier
+        local moveDir = Humanoid.MoveDirection.Unit
+        local newPos = RootPart.Position + moveDir * currentSpeed * dt
+        RootPart.CFrame = CFrame.new(newPos, newPos + RootPart.CFrame.LookVector)
+    end
+end)
+
+-- Heartbeat loop
+RunService.Heartbeat:Connect(function(dt)
+    local tool = Character:FindFirstChildOfClass("Tool")
+    
+    if toggles.autoAttack and tool then
+        tool:Activate()
+    end
+    
+    if toggles.spin and spinVel then
+        if Humanoid.AutoRotate then
+            spinVel.AngularVelocity = Vector3.new(0, 90, 0)
+        else
+            spinVel.AngularVelocity = Vector3.new(0, 0, 0)
+        end
+    end
+    
+    if toggles.hitbox then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+                if root then 
+                    root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                    root.Transparency = 0.75 
+                end
+                if torso then 
+                    torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                    torso.Transparency = 0.75 
+                end
+            end
+        end
+        
+        local closest, minDist = nil, 999
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+                local dist = (RootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
+                if dist < minDist then 
+                    minDist = dist 
+                    closest = plr.Character.Head 
+                end
+            end
+        end
+        
+        if closest and minDist < 35 then
+            workspace.CurrentCamera.CFrame = workspace.CurrentCamera.CFrame:Lerp(
+                CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, closest.Position), 
+                0.18
+            )
+            if tool then tool:Activate() end
+        end
+    else
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+                if root then 
+                    root.Size = Vector3.new(2, 2, 1) 
+                    root.Transparency = 0 
+                end
+                if torso then 
+                    torso.Size = Vector3.new(2, 2, 1) 
+                    torso.Transparency = 0 
+                end
+            end
+        end
+    end
+    
+    if toggles.esp then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChild("Humanoid") then
+                local head = plr.Character.Head
+                local hum = plr.Character.Humanoid
+                if not espGuis[plr] then
+                    local bb = Instance.new("BillboardGui", head)
+                    bb.Name = "ESP"
+                    bb.Size = UDim2.new(0, 110, 0, 55)
+                    bb.StudsOffset = Vector3.new(0, 3, 0)
+                    bb.AlwaysOnTop = true
+                    local label = Instance.new("TextLabel", bb)
+                    label.Size = UDim2.new(1, 0, 1, 0)
+                    label.BackgroundTransparency = 1
+                    label.TextColor3 = Color3.fromRGB(255, 255, 0)
+                    label.TextStrokeTransparency = 0
+                    label.TextStrokeColor3 = Color3.new(0, 0, 0)
+                    label.TextSize = 15
+                    label.Font = Enum.Font.GothamBold
+                    espGuis[plr] = bb
+                end
+                espGuis[plr].TextLabel.Text = plr.Name .. "\nHP: " .. math.floor(hum.Health) .. "/" .. hum.MaxHealth
+            end
+        end
+    else
+        for _, gui in pairs(espGuis) do 
+            if gui then 
+                gui:Destroy() 
+            end 
+        end
+        espGuis = {}
+    end
+end)
+
+print("Vietnam Hub Fix: Tên tab không mất nữa khi bật/tắt chức năng. Menu kéo được, nhỏ gọn. Chạy test nhé Lâm! 🇻🇳")
+print("Hướng dẫn sử dụng:")
+print("1. Click nút cờ VN để mở/đóng menu")
+print("2. Kéo menu chính bằng hình cờ VN")
+print("3. Kéo menu phụ bằng phần tiêu đề (Vietnam Hub)")
+print("4. Nhập kích thước hitbox và bấm Áp dụng")
+print("5. Bấm nút X để tắt toàn bộ script")

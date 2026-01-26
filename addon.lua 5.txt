@@ -329,4 +329,5 @@ local function performHeal()
     bandage.Parent = backpack
     if prevTool then prevTool.Parent = Character end
     isHealing = false
-end
+  end
+end)

@@ -30,6 +30,8 @@ local Settings = {
 
 local connections = {}
 local hitboxParts = {}
+local isHealing = false
+local backpack = player:WaitForChild("Backpack")
 
 -- Main Icon (xanh to dễ bấm)
 local MainIcon = Instance.new("TextButton")
@@ -198,6 +200,77 @@ CloseBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
 end)
 
+-- Auto Băng Gạc function - FIXED VERSION
+local function performHeal()
+    if isHealing then return end
+    isHealing = true
+    
+    local char = player.Character
+    if not char then 
+        isHealing = false
+        return 
+    end
+    
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        isHealing = false
+        return
+    end
+    
+    -- Kiểm tra nếu HP dưới ngưỡng
+    if humanoid.Health >= Settings.BandageThreshold then
+        isHealing = false
+        return
+    end
+    
+    -- Tìm băng gạc trong backpack
+    local bandage = nil
+    for _, obj in ipairs(backpack:GetChildren()) do
+        if obj:IsA("Tool") and (string.find(string.lower(obj.Name), "băng") or 
+                                 string.find(string.lower(obj.Name), "bandage") or
+                                 string.find(string.lower(obj.Name), "gạc") or
+                                 string.find(string.lower(obj.Name), "medkit") or
+                                 string.find(string.lower(obj.Name), "thuốc")) then
+            bandage = obj
+            break
+        end
+    end
+    
+    if not bandage then 
+        isHealing = false 
+        return 
+    end
+    
+    -- Lưu tool hiện tại và chuyển sang băng gạc
+    local prevTool = char:FindFirstChildOfClass("Tool")
+    if prevTool then 
+        prevTool.Parent = backpack 
+    end
+    
+    bandage.Parent = char
+    task.wait(0.2)
+    
+    -- Kích hoạt băng gạc
+    pcall(function()
+        if bandage:FindFirstChild("Activate") then
+            bandage.Activate:Fire()
+        elseif bandage:IsA("Tool") then
+            bandage:Activate()
+        end
+    end)
+    
+    task.wait(1)
+    
+    -- Trả băng gạc về backpack và lấy lại tool cũ
+    bandage.Parent = backpack
+    if prevTool then 
+        prevTool.Parent = char 
+    end
+    
+    isHealing = false
+    print("AutoBandage: Đã sử dụng băng gạc!")
+end
+
 -- MAIN LOGIC (Heartbeat - KHÔNG BLOCK bởi bandage)
 connections.heartbeat = RunService.Heartbeat:Connect(function()
     local char = player.Character
@@ -220,6 +293,11 @@ connections.heartbeat = RunService.Heartbeat:Connect(function()
 
     -- Speed
     hum.WalkSpeed = Settings.SpeedHack and Settings.RunSpeed or 16
+    
+    -- Auto Bandage (kiểm tra trong Heartbeat)
+    if Settings.AutoBandage and not isHealing then
+        performHeal()
+    end
 end)
 
 -- HITBOX AIMBOT 100% (riêng, gim + spam khi trong vùng)
@@ -305,29 +383,25 @@ spawn(function()
     end
 end)
 
--- Auto Băng Gạc function
-local function performHeal()
-    if isHealing then return end
-    isHealing = true
-    local bandage = nil
-    for _, obj in ipairs(backpack:GetChildren()) do
-        if obj:IsA("Tool") and string.find(string.lower(obj.Name), "băng") then
-            bandage = obj
-            break
+-- Auto Bandage Loop riêng (backup)
+spawn(function()
+    while true do
+        task.wait(1) -- Kiểm tra mỗi giây
+        if Settings.AutoBandage and not isHealing then
+            performHeal()
         end
     end
-    if not bandage then 
-        isHealing = false 
-        return 
-    end
-    local prevTool = Character:FindFirstChildOfClass("Tool")
-    if prevTool then prevTool.Parent = backpack end
-    bandage.Parent = Character
-    task.wait(0.2)
-    bandage:Activate()
-    task.wait(1)
-    bandage.Parent = backpack
-    if prevTool then prevTool.Parent = Character end
-    isHealing = false
-  end
 end)
+
+-- Cleanup khi player rời game
+game:GetService("Players").PlayerRemoving:Connect(function(plr)
+    if plr == player then
+        for _, conn in pairs(connections) do
+            pcall(function() conn:Disconnect() end)
+        end
+        pcall(function() sg:Destroy() end)
+    end
+end)
+
+print("VIETNAM Hub Script đã tải xong!")
+print("Auto Bandage: Bật chức năng và đặt HP ngưỡng để tự động dùng băng gạc")

@@ -1,0 +1,358 @@
+-- VIETNAM Hub // nick tiktok: dcmoilha
+-- Script CDVN - FIX AUTO BĂNG GẠC (dưới 80HP tự dùng + cầm lại tool cũ) + Menu PlayerGui ổn định
+-- Copy paste executor (Arceus X, Delta, Fluxus, etc.)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "VietnamHubGUI"
+sg.ResetOnSpawn = false
+sg.Parent = player:WaitForChild("PlayerGui")  -- FIX MENU HIỆN 100%
+print("VIETNAM Hub: GUI loaded in PlayerGui!")
+
+-- Biến trạng thái
+local Settings = {
+    AutoAttack = false,
+    Spin = false,
+    SpinSpeed = 60,
+    SpeedHack = false,
+    RunSpeed = 32,
+    HitboxExpand = false,
+    HitboxSize = 10,
+    AutoBandage = false,
+    BandageThreshold = 80,  -- FIX: Dưới 80HP tự bandage
+    IsBandaging = false
+}
+
+local connections = {}
+local hitboxParts = {}
+
+-- Main Icon (xanh to dễ bấm)
+local MainIcon = Instance.new("TextButton")
+MainIcon.Size = UDim2.new(0, 100, 0, 50)
+MainIcon.Position = UDim2.new(0.05, 0, 0.1, 0)
+MainIcon.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+MainIcon.Text = "Mở Menu\nVIETNAM Hub"
+MainIcon.TextColor3 = Color3.new(1,1,1)
+MainIcon.TextScaled = true
+MainIcon.Font = Enum.Font.SourceSansBold
+MainIcon.Parent = sg
+MainIcon.Draggable = true
+MainIcon.Active = true
+print("Icon xanh đã hiện - bấm mở menu!")
+
+-- Frame chính
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 280, 0, 450)
+MainFrame.Position = UDim2.new(0.5, -140, 0.5, -225)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Visible = false
+MainFrame.Parent = sg
+MainFrame.Draggable = true
+MainFrame.Active = true
+MainFrame.ClipsDescendants = true
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundTransparency = 1
+Title.Text = "VIETNAM Hub // nick tiktok: dcmoilha"
+Title.TextColor3 = Color3.fromRGB(0, 255, 100)
+Title.TextSize = 18
+Title.Font = Enum.Font.SourceSansBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = MainFrame
+
+-- Close Btn
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 35, 0, 35)
+CloseBtn.Position = UDim2.new(1, -40, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.new(1,1,1)
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.Parent = MainFrame
+
+-- Scrolling
+local Scrolling = Instance.new("ScrollingFrame")
+Scrolling.Size = UDim2.new(1, -10, 1, -50)
+Scrolling.Position = UDim2.new(0, 5, 0, 45)
+Scrolling.BackgroundTransparency = 1
+Scrolling.ScrollBarThickness = 5
+Scrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scrolling.CanvasSize = UDim2.new(0,0,0,0)
+Scrolling.Parent = MainFrame
+
+local UIList = Instance.new("UIListLayout")
+UIList.Padding = UDim.new(0, 10)
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+UIList.Parent = Scrolling
+
+-- Hàm tạo tab (xanh ON / đỏ OFF)
+local function CreateTab(name, toggleVar)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -20, 0, 45)
+    btn.Text = name .. " [OFF]"
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.SourceSansSemibold
+    btn.TextSize = 20
+    btn.BorderSizePixel = 0
+    btn.Parent = Scrolling
+    
+    local function Update()
+        if Settings[toggleVar] then
+            btn.BackgroundColor3 = Color3.fromRGB(0, 220, 0)
+            btn.Text = name .. " [ON]"
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(220, 0, 0)
+            btn.Text = name .. " [OFF]"
+        end
+    end
+    Update()
+    
+    btn.MouseButton1Click:Connect(function()
+        Settings[toggleVar] = not Settings[toggleVar]
+        Update()
+    end)
+    return btn
+end
+
+-- Tabs & Inputs
+CreateTab("Auto Đánh", "AutoAttack")
+
+local spinInput = Instance.new("TextBox")
+spinInput.Size = UDim2.new(1, -20, 0, 40)
+spinInput.BackgroundColor3 = Color3.fromRGB(35,35,45)
+spinInput.TextColor3 = Color3.new(1,1,1)
+spinInput.PlaceholderText = "Tốc độ xoay (60)"
+spinInput.Text = "60"
+spinInput.TextScaled = true
+spinInput.Parent = Scrolling
+spinInput.FocusLost:Connect(function() Settings.SpinSpeed = tonumber(spinInput.Text) or 60 end)
+
+CreateTab("Xoay", "Spin")
+
+CreateTab("Speed", "SpeedHack")
+
+local speedInput = Instance.new("TextBox")
+speedInput.Size = UDim2.new(1, -20, 0, 40)
+speedInput.BackgroundColor3 = Color3.fromRGB(35,35,45)
+speedInput.TextColor3 = Color3.new(1,1,1)
+speedInput.PlaceholderText = "Tốc độ chạy (32)"
+speedInput.Text = "32"
+speedInput.TextScaled = true
+speedInput.Parent = Scrolling
+speedInput.FocusLost:Connect(function() Settings.RunSpeed = tonumber(speedInput.Text) or 32 end)
+
+CreateTab("Hitbox", "HitboxExpand")
+
+local hitInput = Instance.new("TextBox")
+hitInput.Size = UDim2.new(1, -20, 0, 40)
+hitInput.BackgroundColor3 = Color3.fromRGB(35,35,45)
+hitInput.TextColor3 = Color3.new(1,1,1)
+hitInput.PlaceholderText = "Kích thước hitbox (10)"
+hitInput.Text = "10"
+hitInput.TextScaled = true
+hitInput.Parent = Scrolling
+hitInput.FocusLost:Connect(function() Settings.HitboxSize = tonumber(hitInput.Text) or 10 end)
+
+CreateTab("Auto Băng Gạc", "AutoBandage")
+
+local hpInput = Instance.new("TextBox")
+hpInput.Size = UDim2.new(1, -20, 0, 40)
+hpInput.BackgroundColor3 = Color3.fromRGB(35,35,45)
+hpInput.TextColor3 = Color3.new(1,1,1)
+hpInput.PlaceholderText = "Máu dưới (80)"
+hpInput.Text = "80"
+hpInput.TextScaled = true
+hpInput.Parent = Scrolling
+hpInput.FocusLost:Connect(function() Settings.BandageThreshold = tonumber(hpInput.Text) or 80 end)
+
+-- Fix Lag Btn
+local fixBtn = Instance.new("TextButton")
+fixBtn.Size = UDim2.new(1, -20, 0, 45)
+fixBtn.BackgroundColor3 = Color3.fromRGB(50,50,70)
+fixBtn.Text = "Fix Lag"
+fixBtn.TextColor3 = Color3.new(1,1,1)
+fixBtn.TextSize = 20
+fixBtn.Font = Enum.Font.SourceSansSemibold
+fixBtn.BorderSizePixel = 0
+fixBtn.Parent = Scrolling
+fixBtn.MouseButton1Click:Connect(function()
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+    game.Lighting.GlobalShadows = false
+    game.Lighting.FogEnd = 99999
+    print("Fix lag OK!")
+end)
+
+-- Toggle menu
+MainIcon.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+
+-- MAIN LOGIC (Heartbeat - KHÔNG BLOCK bởi bandage)
+connections.heartbeat = RunService.Heartbeat:Connect(function()
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChild("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root or hum.Health <= 0 then return end
+
+    -- Auto Attack global
+    if Settings.AutoAttack then
+        for _, tool in pairs(char:GetChildren()) do
+            if tool:IsA("Tool") then pcall(tool.Activate, tool) end
+        end
+    end
+
+    -- Spin
+    if Settings.Spin then
+        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(Settings.SpinSpeed / 60), 0)
+    end
+
+    -- Speed
+    hum.WalkSpeed = Settings.SpeedHack and Settings.RunSpeed or 16
+end)
+
+-- HITBOX AIMBOT 100% (riêng, gim + spam khi trong vùng)
+spawn(function()
+    while true do
+        task.wait(0.05)
+        if not Settings.HitboxExpand then continue end
+
+        local char = player.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        local closestEnemy = nil
+        local minDist = Settings.HitboxSize / 2 + 2
+
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= player and plr.Character then
+                local eRoot = plr.Character:FindFirstChild("HumanoidRootPart")
+                local eHum = plr.Character:FindFirstChild("Humanoid")
+                if eRoot and eHum and eHum.Health > 0 then
+                    local dist = (root.Position - eRoot.Position).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        closestEnemy = plr.Character
+                    end
+                end
+            end
+        end
+
+        if closestEnemy then
+            local targetPart = closestEnemy:FindFirstChild("Head") or closestEnemy.HumanoidRootPart
+
+            -- Aim camera gim head (smooth mạnh)
+            local targetCFrame = CFrame.lookAt(camera.CFrame.Position, targetPart.Position)
+            camera.CFrame = camera.CFrame:Lerp(targetCFrame, 0.6)
+
+            -- Rotate body face enemy
+            local lookDir = (targetPart.Position - root.Position)
+            root.CFrame = CFrame.lookAt(root.Position, root.Position + Vector3.new(lookDir.X, 0, lookDir.Z))
+
+            -- Spam tool (đánh/ném gim 100%)
+            for _, tool in pairs(char:GetChildren()) do
+                if tool:IsA("Tool") then
+                    pcall(tool.Activate, tool)
+                end
+            end
+        end
+    end
+end)
+
+-- VISUAL HITBOX (box đỏ)
+spawn(function()
+    while true do
+        for _, p in pairs(hitboxParts) do p:Destroy() end
+        hitboxParts = {}
+        if not Settings.HitboxExpand then task.wait(1) continue end
+
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= player and plr.Character then
+                local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local box = Instance.new("Part")
+                    box.Name = "HitboxViz"
+                    box.Size = Vector3.new(Settings.HitboxSize, Settings.HitboxSize, Settings.HitboxSize)
+                    box.Transparency = 0.65
+                    box.Color = Color3.fromRGB(255, 0, 0)
+                    box.Material = Enum.Material.ForceField
+                    box.CanCollide = false
+                    box.Anchored = false
+                    box.CFrame = hrp.CFrame
+                    box.Parent = workspace
+                    table.insert(hitboxParts, box)
+
+                    local weld = Instance.new("WeldConstraint")
+                    weld.Part0 = hrp
+                    weld.Part1 = box
+                    weld.Parent = box
+                end
+            end
+        end
+        task.wait(0.8)
+    end
+end)
+
+-- AUTO BĂNG GẠC FIX (CHECK RIÊNG, KHÔNG BLOCK HEARTBEAT, DƯỚI 80HP TỰ DÙNG + CẦM LẠI TOOL CŨ)
+spawn(function()
+    while true do
+        task.wait(0.5)  -- Check mỗi 0.5s, không spam
+        local char = player.Character
+        if not char or not Settings.AutoBandage then continue end
+        local hum = char:FindFirstChild("Humanoid")
+        if not hum or hum.Health <= 0 or hum.Health > Settings.BandageThreshold or Settings.IsBandaging then continue end
+
+        -- TRIGGER BANDAGE
+        Settings.IsBandaging = true
+        print("Auto Băng Gạc kích hoạt! HP: " .. math.floor(hum.Health))
+
+        local currentTool = nil
+        -- Lưu tool đang cầm
+        for _, item in pairs(char:GetChildren()) do
+            if item:IsA("Tool") then
+                currentTool = item
+                break
+            end
+        end
+
+        local backpack = player.Backpack
+        local bandageName = "Băng Gạc"  -- THAY NẾU TÊN KHÁC (check Backpack game)
+        local bandage = backpack:FindFirstChild(bandageName) or char:FindFirstChild(bandageName)
+
+        if bandage then
+            -- Unequip tool cũ
+            if currentTool then
+                currentTool.Parent = backpack
+                task.wait(0.1)
+            end
+
+            -- Equip + dùng bandage
+            hum:EquipTool(bandage)
+            task.wait(0.4)  -- Đợi equip
+            pcall(function() bandage:Activate() end)
+
+            task.wait(3.5)  -- Thời gian hồi máu (chỉnh nếu cần)
+
+            -- Cầm lại tool cũ
+            if currentTool and currentTool.Parent == backpack then
+                hum:EquipTool(currentTool)
+            end
+        else
+            print("KHÔNG TÌM THẤY 'Băng Gạc'! Check tên item trong Backpack.")
+        end
+
+        Settings.IsBandaging = false
+    end
+end)

@@ -23,7 +23,7 @@ local toggles = {
 }
 
 -- Hitbox settings
-local hitboxSize = 10
+local hitboxSize = 20
 
 -- ESP
 local espGuis = {}
@@ -168,9 +168,9 @@ end
 
 -- Frame cho điều chỉnh Hitbox Size (di chuyển xuống dưới)
 local HitboxSizeFrame = Instance.new("Frame")
-HitboxSizeFrame.Size = UDim2.new(0.88, 0, 0, 50)
-HitboxSizeFrame.Position = UDim2.new(0.06, 0, 0, 430)
-HitboxSizeFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+HitboxSizeFrame.Size = UDim2.new(0.90, 0, 0, 70)
+HitboxSizeFrame.Position = UDim2.new(0.08, 0, 0, 500)
+HitboxSizeFrame.BackgroundColor3 = Color3.fromRGB(42, 46, 50)
 HitboxSizeFrame.Parent = ContentFrame
 
 local HitboxSizeCorner = Instance.new("UICorner")
@@ -193,7 +193,7 @@ HitboxInput.Position = UDim2.new(0.05, 0, 0.45, 0)
 HitboxInput.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 HitboxInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 HitboxInput.Text = tostring(hitboxSize)
-HitboxInput.TextSize = 16
+HitboxInput.TextSize = 20
 HitboxInput.PlaceholderText = "Nhập kích thước"
 HitboxInput.ClearTextOnFocus = false
 HitboxInput.Parent = HitboxSizeFrame
@@ -208,7 +208,7 @@ HitboxApplyButton.Position = UDim2.new(0.7, 0, 0.45, 0)
 HitboxApplyButton.BackgroundColor3 = Color3.fromRGB(60, 180, 60)
 HitboxApplyButton.Text = "Áp dụng"
 HitboxApplyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-HitboxApplyButton.TextSize = 14
+HitboxApplyButton.TextSize = 20
 HitboxApplyButton.Font = Enum.Font.GothamSemibold
 HitboxApplyButton.Parent = HitboxSizeFrame
 

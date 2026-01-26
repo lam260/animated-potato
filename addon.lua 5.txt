@@ -305,54 +305,28 @@ spawn(function()
     end
 end)
 
--- AUTO BĂNG GẠC FIX (CHECK RIÊNG, KHÔNG BLOCK HEARTBEAT, DƯỚI 80HP TỰ DÙNG + CẦM LẠI TOOL CŨ)
-spawn(function()
-    while true do
-        task.wait(0.5)  -- Check mỗi 0.5s, không spam
-        local char = player.Character
-        if not char or not Settings.AutoBandage then continue end
-        local hum = char:FindFirstChild("Humanoid")
-        if not hum or hum.Health <= 0 or hum.Health > Settings.BandageThreshold or Settings.IsBandaging then continue end
-
-        -- TRIGGER BANDAGE
-        Settings.IsBandaging = true
-        print("Auto Băng Gạc kích hoạt! HP: " .. math.floor(hum.Health))
-
-        local currentTool = nil
-        -- Lưu tool đang cầm
-        for _, item in pairs(char:GetChildren()) do
-            if item:IsA("Tool") then
-                currentTool = item
-                break
-            end
+-- Auto Băng Gạc function
+local function performHeal()
+    if isHealing then return end
+    isHealing = true
+    local bandage = nil
+    for _, obj in ipairs(backpack:GetChildren()) do
+        if obj:IsA("Tool") and string.find(string.lower(obj.Name), "băng") then
+            bandage = obj
+            break
         end
-
-        local backpack = player.Backpack
-        local bandageName = "Băng Gạc"  -- THAY NẾU TÊN KHÁC (check Backpack game)
-        local bandage = backpack:FindFirstChild(bandageName) or char:FindFirstChild(bandageName)
-
-        if bandage then
-            -- Unequip tool cũ
-            if currentTool then
-                currentTool.Parent = backpack
-                task.wait(0.1)
-            end
-
-            -- Equip + dùng bandage
-            hum:EquipTool(bandage)
-            task.wait(0.4)  -- Đợi equip
-            pcall(function() bandage:Activate() end)
-
-            task.wait(3.5)  -- Thời gian hồi máu (chỉnh nếu cần)
-
-            -- Cầm lại tool cũ
-            if currentTool and currentTool.Parent == backpack then
-                hum:EquipTool(currentTool)
-            end
-        else
-            print("KHÔNG TÌM THẤY 'Băng Gạc'! Check tên item trong Backpack.")
-        end
-
-        Settings.IsBandaging = false
     end
-end)
+    if not bandage then 
+        isHealing = false 
+        return 
+    end
+    local prevTool = Character:FindFirstChildOfClass("Tool")
+    if prevTool then prevTool.Parent = backpack end
+    bandage.Parent = Character
+    task.wait(0.2)
+    bandage:Activate()
+    task.wait(1)
+    bandage.Parent = backpack
+    if prevTool then prevTool.Parent = Character end
+    isHealing = false
+end

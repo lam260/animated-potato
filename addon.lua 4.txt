@@ -37,6 +37,9 @@ local isHealing = false
 -- Anti Kick
 local oldKick = nil
 
+-- speed
+local oldkick = 32
+
 -- ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "VietnamHub"
@@ -117,9 +120,9 @@ TitleLabel.Parent = TitleFrame
 local CloseButton = Instance.new("TextButton")
 CloseButton.Size = UDim2.new(0, 30, 0, 30)
 CloseButton.Position = UDim2.new(0.9, -15, 0.5, -15)
-CloseButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+CloseButton.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
 CloseButton.Text = "X"
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextColor3 = Color3.fromRGB(32, 32, 32)
 CloseButton.TextSize = 20
 CloseButton.Font = Enum.Font.GothamBold
 CloseButton.Parent = TitleFrame

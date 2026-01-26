@@ -1,11 +1,12 @@
--- Vietnam Hub Script - Fix lỗi mất tên tab khi bật/tắt chức năng
--- Nguyên nhân: Khi update text button, dùng btn.Name thay vì data.name cố định → text bị thay đổi sai
--- Đã fix bằng cách lưu tên gốc riêng và chỉ toggle "(Bật)/(Tắt)"
+-- Vietnam Hub Script - Update: Fix lag + Thêm Anti Đuổi (Anti Kick)
+-- Fix lag: Không set hitbox/ESP mỗi frame nữa, chỉ set khi toggle/on join/respawn
+-- Anti Kick: Hook Kick method để prevent kick khi bật
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
+local backpack = LocalPlayer.Backpack
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local RootPart = Character:WaitForChild("HumanoidRootPart")
@@ -16,7 +17,9 @@ local toggles = {
     spin = false,
     speed = false,
     hitbox = false,
-    esp = false
+    esp = false,
+    autoBandage = false,
+    antiKick = false
 }
 
 -- Hitbox settings
@@ -28,12 +31,11 @@ local espGuis = {}
 -- Spin
 local spinVel = nil
 
--- Speed variables (tăng dần không ngừng)
-local baseSpeed = 16
-local speedMultiplier = 1.0
-local maxMultiplier = 5.0
-local increaseRate = 0.05
-local isSpeeding = false
+-- Auto Bandage
+local isHealing = false
+
+-- Anti Kick
+local oldKick = nil
 
 -- ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
@@ -60,10 +62,10 @@ FlagImage.BackgroundTransparency = 1
 FlagImage.Image = "rbxassetid://11548089657"  -- Cờ VN
 FlagImage.Parent = MainFrame
 
--- Sub Menu (kéo được)
+-- Sub Menu (kéo được, tăng height)
 local SubFrame = Instance.new("Frame")
 SubFrame.Name = "SubMenu"
-SubFrame.Size = UDim2.new(0, 320, 0, 470) -- Tăng chiều cao để thêm ô nhập hitbox
+SubFrame.Size = UDim2.new(0, 320, 0, 570)
 SubFrame.Position = UDim2.new(0.15, 0, 0.15, 0)
 SubFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 SubFrame.BackgroundTransparency = 0.15
@@ -133,13 +135,15 @@ ContentFrame.Position = UDim2.new(0, 0, 0, 45)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.Parent = SubFrame
 
--- Tab buttons với tên gốc cố định
+-- Tab buttons với tên gốc cố định (thêm Anti Đuổi)
 local tabData = {
     {displayName = "Auto Đánh", toggleKey = "autoAttack"},
     {displayName = "Xoay", toggleKey = "spin"},
     {displayName = "Speed", toggleKey = "speed"},
     {displayName = "Hitbox", toggleKey = "hitbox"},
-    {displayName = "ESP", toggleKey = "esp"}
+    {displayName = "ESP", toggleKey = "esp"},
+    {displayName = "Auto Băng Gạc", toggleKey = "autoBandage"},
+    {displayName = "Anti Đuổi", toggleKey = "antiKick"}
 }
 
 local tabButtons = {}
@@ -148,7 +152,7 @@ for i, data in ipairs(tabData) do
     btn.Size = UDim2.new(0.88, 0, 0, 48)
     btn.Position = UDim2.new(0.06, 0, 0, 10 + (i-1)*58)
     btn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-    btn.Text = data.displayName .. " (Tắt)"  -- tên gốc + trạng thái
+    btn.Text = data.displayName .. " (Tắt)"
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.TextSize = 18
     btn.Font = Enum.Font.GothamSemibold
@@ -158,15 +162,14 @@ for i, data in ipairs(tabData) do
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = btn
     
-    -- Lưu tên gốc để không bị mất khi update text
     btn:SetAttribute("OriginalName", data.displayName)
     tabButtons[data.toggleKey] = btn
 end
 
--- Frame cho điều chỉnh Hitbox Size
+-- Frame cho điều chỉnh Hitbox Size (di chuyển xuống dưới)
 local HitboxSizeFrame = Instance.new("Frame")
 HitboxSizeFrame.Size = UDim2.new(0.88, 0, 0, 50)
-HitboxSizeFrame.Position = UDim2.new(0.06, 0, 0, 300)
+HitboxSizeFrame.Position = UDim2.new(0.06, 0, 0, 430)
 HitboxSizeFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
 HitboxSizeFrame.Parent = ContentFrame
 
@@ -222,14 +225,19 @@ HitboxApplyButton.MouseButton1Click:Connect(function()
         hitboxSize = num
         HitboxInput.Text = tostring(hitboxSize)
         
-        -- Cập nhật ngay nếu đang bật hitbox
         if toggles.hitbox then
             for _, plr in ipairs(Players:GetPlayers()) do
                 if plr ~= LocalPlayer and plr.Character then
                     local root = plr.Character:FindFirstChild("HumanoidRootPart")
                     local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
-                    if root then root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) end
-                    if torso then torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) end
+                    if root then 
+                        root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                        root.Transparency = 0.75 
+                    end
+                    if torso then 
+                        torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                        torso.Transparency = 0.75 
+                    end
                 end
             end
         end
@@ -244,16 +252,13 @@ HitboxInput.FocusLost:Connect(function(enterPressed)
     end
 end)
 
--- Draggable cho MainFrame (hình cờ Việt Nam)
+-- Draggable MainFrame
 local mainDragging, mainDragInput, mainDragStart, mainStartPos
-
 MainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        -- Chỉ cho phép kéo khi giữ nút
         mainDragging = true
         mainDragStart = input.Position
         mainStartPos = MainFrame.Position
-        
         input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then 
                 mainDragging = false 
@@ -271,24 +276,28 @@ end)
 UserInputService.InputChanged:Connect(function(input)
     if input == mainDragInput and mainDragging then
         local delta = input.Position - mainDragStart
-        MainFrame.Position = UDim2.new(
-            mainStartPos.X.Scale, 
-            mainStartPos.X.Offset + delta.X,
-            mainStartPos.Y.Scale, 
-            mainStartPos.Y.Offset + delta.Y
-        )
+        MainFrame.Position = UDim2.new(mainStartPos.X.Scale, mainStartPos.X.Offset + delta.X, mainStartPos.Y.Scale, mainStartPos.Y.Offset + delta.Y)
     end
 end)
 
--- Draggable cho SubFrame (chỉ kéo bằng TitleFrame)
-local subDragging, subDragInput, subDragStart, subStartPos
+-- Toggle menu (phân biệt drag)
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        task.spawn(function()
+            task.wait(0.1)
+            if mainDragging then return end
+            SubFrame.Visible = not SubFrame.Visible
+        end)
+    end
+end)
 
+-- Draggable SubFrame (TitleFrame)
+local subDragging, subDragInput, subDragStart, subStartPos
 TitleFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         subDragging = true
         subDragStart = input.Position
         subStartPos = SubFrame.Position
-        
         input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then 
                 subDragging = false 
@@ -306,44 +315,51 @@ end)
 UserInputService.InputChanged:Connect(function(input)
     if input == subDragInput and subDragging then
         local delta = input.Position - subDragStart
-        SubFrame.Position = UDim2.new(
-            subStartPos.X.Scale, 
-            subStartPos.X.Offset + delta.X,
-            subStartPos.Y.Scale, 
-            subStartPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
--- Toggle menu bằng MainFrame
-MainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        -- Đợi một chút để phân biệt giữa click và bắt đầu kéo
-        task.wait(0.1)
-        if mainDragging then
-            -- Nếu đang kéo thì không toggle menu
-            return
-        end
-        SubFrame.Visible = not SubFrame.Visible
+        SubFrame.Position = UDim2.new(subStartPos.X.Scale, subStartPos.X.Offset + delta.X, subStartPos.Y.Scale, subStartPos.Y.Offset + delta.Y)
     end
 end)
 
 -- Tắt toàn bộ script
 local function destroyScript()
-    -- Xóa tất cả GUI
     ScreenGui:Destroy()
-    
-    -- Reset tất cả chức năng
-    if spinVel then
-        spinVel:Destroy()
-        spinVel = nil
-    end
-    
-    -- Reset hitbox
+    if spinVel then spinVel:Destroy() spinVel = nil end
+    pcall(function()
+        Humanoid.WalkSpeed = 16
+    end)
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
             local root = plr.Character:FindFirstChild("HumanoidRootPart")
             local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+            if root then root.Size = Vector3.new(2, 2, 1) root.Transparency = 0 end
+            if torso then torso.Size = Vector3.new(2, 2, 1) torso.Transparency = 0 end
+        end
+    end
+    for _, gui in pairs(espGuis) do if gui then gui:Destroy() end end
+    espGuis = {}
+    isHealing = false
+    if toggles.antiKick then
+        LocalPlayer.Kick = oldKick
+    end
+    print("Vietnam Hub đã tắt!")
+end
+
+CloseButton.MouseButton1Click:Connect(destroyScript)
+
+-- Function để set hitbox cho một player
+local function setHitbox(plr, enable)
+    if plr ~= LocalPlayer and plr.Character then
+        local root = plr.Character:FindFirstChild("HumanoidRootPart")
+        local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
+        if enable then
+            if root then 
+                root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                root.Transparency = 0.75 
+            end
+            if torso then 
+                torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
+                torso.Transparency = 0.75 
+            end
+        else
             if root then 
                 root.Size = Vector3.new(2, 2, 1) 
                 root.Transparency = 0 
@@ -354,28 +370,46 @@ local function destroyScript()
             end
         end
     end
-    
-    -- Reset ESP
-    for _, gui in pairs(espGuis) do 
-        if gui then 
-            gui:Destroy() 
-        end 
-    end
-    espGuis = {}
-    
-    print("Vietnam Hub đã được tắt hoàn toàn!")
 end
 
--- Đóng menu và tắt toàn bộ script bằng nút X
-CloseButton.MouseButton1Click:Connect(function()
-    destroyScript()
-end)
+-- Function để set ESP cho một player
+local function setESP(plr, enable)
+    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChild("Humanoid") then
+        local head = plr.Character.Head
+        local hum = plr.Character.Humanoid
+        if enable then
+            if not espGuis[plr] then
+                local bb = Instance.new("BillboardGui")
+                bb.Parent = head
+                bb.Name = "ESP"
+                bb.Size = UDim2.new(0, 110, 0, 55)
+                bb.StudsOffset = Vector3.new(0, 3, 0)
+                bb.AlwaysOnTop = true
+                local label = Instance.new("TextLabel")
+                label.Parent = bb
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = Color3.fromRGB(255, 255, 0)
+                label.TextStrokeTransparency = 0
+                label.TextStrokeColor3 = Color3.new(0, 0, 0)
+                label.TextSize = 15
+                label.Font = Enum.Font.GothamBold
+                espGuis[plr] = bb
+            end
+            espGuis[plr].TextLabel.Text = plr.Name .. "\nHP: " .. math.floor(hum.Health) .. "/" .. hum.MaxHealth
+        else
+            if espGuis[plr] then 
+                espGuis[plr]:Destroy() 
+                espGuis[plr] = nil
+            end
+        end
+    end
+end
 
 -- Toggle chức năng
 for key, btn in pairs(tabButtons) do
     btn.MouseButton1Click:Connect(function()
         toggles[key] = not toggles[key]
-        
         local originalName = btn:GetAttribute("OriginalName")
         if toggles[key] then
             btn.BackgroundColor3 = Color3.fromRGB(60, 220, 60)
@@ -385,7 +419,6 @@ for key, btn in pairs(tabButtons) do
             btn.Text = originalName .. " (Tắt)"
         end
         
-        -- Xử lý đặc biệt
         if key == "spin" then
             if toggles.spin then
                 if spinVel then spinVel:Destroy() end
@@ -396,51 +429,59 @@ for key, btn in pairs(tabButtons) do
             else
                 if spinVel then spinVel:Destroy() spinVel = nil end
             end
-        end
-        
-        if key == "speed" then
-            isSpeeding = toggles.speed
-            if isSpeeding then
-                speedMultiplier = 1.0
+        elseif key == "speed" then
+            pcall(function()
+                Humanoid.WalkSpeed = toggles.speed and 33 or 16
+            end)
+        elseif key == "hitbox" then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                setHitbox(plr, toggles.hitbox)
             end
-        end
-        
-        if key == "hitbox" then
-            if toggles.hitbox then
-                -- Khi bật hitbox, áp dụng kích thước hiện tại
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= LocalPlayer and plr.Character then
-                        local root = plr.Character:FindFirstChild("HumanoidRootPart")
-                        local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
-                        if root then 
-                            root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
-                            root.Transparency = 0.75 
-                        end
-                        if torso then 
-                            torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
-                            torso.Transparency = 0.75 
-                        end
-                    end
+        elseif key == "esp" then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                setESP(plr, toggles.esp)
+            end
+        elseif key == "antiKick" then
+            if toggles.antiKick then
+                oldKick = LocalPlayer.Kick
+                LocalPlayer.Kick = function(self, msg)
+                    warn("Anti Kick: Đã chặn kick - Lý do: " .. (msg or "Không rõ"))
+                    return
                 end
             else
-                -- Khi tắt hitbox, reset về kích thước gốc
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= LocalPlayer and plr.Character then
-                        local root = plr.Character:FindFirstChild("HumanoidRootPart")
-                        local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
-                        if root then 
-                            root.Size = Vector3.new(2, 2, 1) 
-                            root.Transparency = 0 
-                        end
-                        if torso then 
-                            torso.Size = Vector3.new(2, 2, 1) 
-                            torso.Transparency = 0 
-                        end
-                    end
+                if oldKick then
+                    LocalPlayer.Kick = oldKick
+                    oldKick = nil
                 end
             end
         end
     end)
+end
+
+-- Auto Băng Gạc function
+local function performHeal()
+    if isHealing then return end
+    isHealing = true
+    local bandage = nil
+    for _, obj in ipairs(backpack:GetChildren()) do
+        if obj:IsA("Tool") and string.find(string.lower(obj.Name), "băng") then
+            bandage = obj
+            break
+        end
+    end
+    if not bandage then 
+        isHealing = false 
+        return 
+    end
+    local prevTool = Character:FindFirstChildOfClass("Tool")
+    if prevTool then prevTool.Parent = backpack end
+    bandage.Parent = Character
+    task.wait(0.2)
+    bandage:Activate()
+    task.wait(1)
+    bandage.Parent = backpack
+    if prevTool then prevTool.Parent = Character end
+    isHealing = false
 end
 
 -- Character respawn
@@ -450,8 +491,9 @@ local function onCharAdded(char)
     RootPart = char:WaitForChild("HumanoidRootPart")
     pcall(function()
         RootPart:SetNetworkOwner(LocalPlayer)
+        Humanoid.WalkSpeed = toggles.speed and 33 or 16
     end)
-    
+    isHealing = false
     if toggles.spin then
         if spinVel then spinVel:Destroy() end
         spinVel = Instance.new("BodyAngularVelocity")
@@ -464,25 +506,40 @@ end
 LocalPlayer.CharacterAdded:Connect(onCharAdded)
 if Character then onCharAdded(Character) end
 
--- Speed tăng dần
-RunService.RenderStepped:Connect(function(dt)
-    if isSpeeding and RootPart and Humanoid.MoveDirection.Magnitude > 0 then
-        speedMultiplier = math.min(speedMultiplier + increaseRate * dt, maxMultiplier)
-        local currentSpeed = baseSpeed * speedMultiplier
-        local moveDir = Humanoid.MoveDirection.Unit
-        local newPos = RootPart.Position + moveDir * currentSpeed * dt
-        RootPart.CFrame = CFrame.new(newPos, newPos + RootPart.CFrame.LookVector)
+-- Handle new players for hitbox/ESP
+Players.PlayerAdded:Connect(function(plr)
+    if toggles.hitbox then
+        plr.CharacterAdded:Connect(function(char)
+            setHitbox(plr, true)
+        end)
+    end
+    if toggles.esp then
+        plr.CharacterAdded:Connect(function(char)
+            setESP(plr, true)
+        end)
     end
 end)
 
--- Heartbeat loop
+-- Handle existing players' character added
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= LocalPlayer then
+        plr.CharacterAdded:Connect(function(char)
+            if toggles.hitbox then setHitbox(plr, true) end
+            if toggles.esp then setESP(plr, true) end
+        end)
+    end
+end
+
+-- Heartbeat loop chính (đã optimize, bỏ set hitbox/ESP mỗi frame)
 RunService.Heartbeat:Connect(function(dt)
     local tool = Character:FindFirstChildOfClass("Tool")
     
+    -- Auto Attack
     if toggles.autoAttack and tool then
         tool:Activate()
     end
     
+    -- Spin
     if toggles.spin and spinVel then
         if Humanoid.AutoRotate then
             spinVel.AngularVelocity = Vector3.new(0, 90, 0)
@@ -491,95 +548,46 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
     
+    -- Hitbox auto đánh gần (chỉ tìm closest và activate, không set size)
     if toggles.hitbox then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                local root = plr.Character:FindFirstChild("HumanoidRootPart")
-                local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
-                if root then 
-                    root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
-                    root.Transparency = 0.75 
-                end
-                if torso then 
-                    torso.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) 
-                    torso.Transparency = 0.75 
-                end
-            end
-        end
-        
         local closest, minDist = nil, 999
         for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
                 local dist = (RootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
                 if dist < minDist then 
                     minDist = dist 
-                    closest = plr.Character.Head 
+                    closest = plr 
                 end
             end
         end
         
-        if closest and minDist < 35 then
-            workspace.CurrentCamera.CFrame = workspace.CurrentCamera.CFrame:Lerp(
-                CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, closest.Position), 
-                0.18
-            )
-            if tool then tool:Activate() end
+        if closest and minDist < 35 and tool then
+            tool:Activate()  -- Đánh liên tục enemy gần
         end
-    else
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                local root = plr.Character:FindFirstChild("HumanoidRootPart")
-                local torso = plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("UpperTorso")
-                if root then 
-                    root.Size = Vector3.new(2, 2, 1) 
-                    root.Transparency = 0 
-                end
-                if torso then 
-                    torso.Size = Vector3.new(2, 2, 1) 
-                    torso.Transparency = 0 
-                end
+    end
+    
+    -- Update ESP text (chỉ update text, không create mới)
+    if toggles.esp then
+        for plr, gui in pairs(espGuis) do
+            if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                local hum = plr.Character.Humanoid
+                gui.TextLabel.Text = plr.Name .. "\nHP: " .. math.floor(hum.Health) .. "/" .. hum.MaxHealth
             end
         end
     end
     
-    if toggles.esp then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChild("Humanoid") then
-                local head = plr.Character.Head
-                local hum = plr.Character.Humanoid
-                if not espGuis[plr] then
-                    local bb = Instance.new("BillboardGui", head)
-                    bb.Name = "ESP"
-                    bb.Size = UDim2.new(0, 110, 0, 55)
-                    bb.StudsOffset = Vector3.new(0, 3, 0)
-                    bb.AlwaysOnTop = true
-                    local label = Instance.new("TextLabel", bb)
-                    label.Size = UDim2.new(1, 0, 1, 0)
-                    label.BackgroundTransparency = 1
-                    label.TextColor3 = Color3.fromRGB(255, 255, 0)
-                    label.TextStrokeTransparency = 0
-                    label.TextStrokeColor3 = Color3.new(0, 0, 0)
-                    label.TextSize = 15
-                    label.Font = Enum.Font.GothamBold
-                    espGuis[plr] = bb
-                end
-                espGuis[plr].TextLabel.Text = plr.Name .. "\nHP: " .. math.floor(hum.Health) .. "/" .. hum.MaxHealth
-            end
-        end
-    else
-        for _, gui in pairs(espGuis) do 
-            if gui then 
-                gui:Destroy() 
-            end 
-        end
-        espGuis = {}
+    -- Auto Băng Gạc
+    if toggles.autoBandage and Humanoid.Health <= 80 and not isHealing then
+        task.spawn(performHeal)
     end
 end)
 
-print("Vietnam Hub Fix: Tên tab không mất nữa khi bật/tắt chức năng. Menu kéo được, nhỏ gọn. Chạy test nhé Lâm! 🇻🇳")
-print("Hướng dẫn sử dụng:")
-print("1. Click nút cờ VN để mở/đóng menu")
-print("2. Kéo menu chính bằng hình cờ VN")
-print("3. Kéo menu phụ bằng phần tiêu đề (Vietnam Hub)")
-print("4. Nhập kích thước hitbox và bấm Áp dụng")
-print("5. Bấm nút X để tắt toàn bộ script")
+print("Vietnam Hub Updated: Fix lag (set hitbox/ESP chỉ khi cần, không mỗi frame), thêm Anti Đuổi (chặn kick). Test nhé Lâm! 🇻🇳")
+print("Hướng dẫn:")
+print("1. Click cờ VN mở menu")
+print("2. Kéo cờ VN / tiêu đề menu")
+print("3. Speed: 33 khi bật")
+print("4. Hitbox: Đánh auto enemy <35 studs (tool spam activate)")
+print("5. Auto Băng Gạc: HP<=80 tự dùng + cầm lại tool cũ")
+print("6. Anti Đuổi: Chặn kick khỏi game")
+print("7. X tắt hết")

@@ -1,5 +1,5 @@
--- Vietnam Hub - Dcmoilha Script (ULTRA FAST BANDAGE)
--- Fixed: Băng gạc siêu tốc, khôi phục vật phẩm cũ ngay lập tức
+-- Vietnam Hub - Dcmoilha Script (ULTRA FAST BANDAGE + Hitbox Fix)
+-- Fixed: Băng gạc siêu tốc, khôi phục khi respawn, Hitbox chỉ đánh khi bạn vào vùng
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -16,7 +16,6 @@ ScreenGui.Parent = game.CoreGui
 ScreenGui.Name = "VietnamHub"
 ScreenGui.ResetOnSpawn = false
 
--- Main Button
 local MainButton = Instance.new("ImageButton")
 MainButton.Size = UDim2.new(0, 30, 0, 30)
 MainButton.Position = UDim2.new(0.5, -15, 0.5, -15)
@@ -38,7 +37,6 @@ local Corner = Instance.new("UICorner")
 Corner.CornerRadius = UDim.new(1,0)
 Corner.Parent = MainButton
 
--- Menu
 local Menu = Instance.new("Frame")
 Menu.Size = UDim2.new(0, 240, 0, 420)
 Menu.Position = UDim2.new(0.5, -120, 0.5, -210)
@@ -61,7 +59,6 @@ Title.TextSize = 18
 Title.Font = Enum.Font.GothamBold
 Title.Parent = Menu
 
--- Scrolling
 local Scroll = Instance.new("ScrollingFrame")
 Scroll.Size = UDim2.new(1,-10,1,-40)
 Scroll.Position = UDim2.new(0,5,0,35)
@@ -112,19 +109,23 @@ local function NewToggle(name, callback)
 
     local enabled = false
 
-    btn.MouseButton1Click:Connect(function()
-        enabled = not enabled
+    local function updateUI()
         btn.Text = enabled and "ON" or "OFF"
         btn.TextColor3 = enabled and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
         btn.BackgroundColor3 = enabled and Color3.fromRGB(30,100,30) or Color3.fromRGB(80,30,30)
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        updateUI()
         callback(enabled)
     end)
 
-    return function() return enabled end, function(v) 
+    updateUI()
+
+    return function() return enabled end, function(v)
         enabled = v
-        btn.Text = v and "ON" or "OFF"
-        btn.TextColor3 = v and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
-        btn.BackgroundColor3 = v and Color3.fromRGB(30,100,30) or Color3.fromRGB(80,30,30)
+        updateUI()
         callback(v)
     end
 end
@@ -166,18 +167,22 @@ local function NewInput(name, def)
     return function() return val end
 end
 
--- Vars
+-- Biến quản lý
 local conns = {}
 local hitboxes = {}
 local esps = {}
 local isHealing = false
 local spinVel = nil
-local lastTool = nil -- Lưu tool cũ để khôi phục
+local lastTool = nil
 
-local function DisconnectAll()
-    for _, c in pairs(conns) do if c then c:Disconnect() end end
-    conns = {}
-end
+local features = {
+    AutoAttack = {enabled = false, conn = nil},
+    Spin        = {enabled = false, obj = nil},
+    Speed       = {enabled = false},
+    Hitbox      = {enabled = false, conn = nil},
+    Bandage     = {enabled = false, conn = nil},
+    ESP         = {enabled = false, conn = nil, playerAddedConn = nil},
+}
 
 local function ClearHitboxes()
     for _, h in pairs(hitboxes) do if h then h:Destroy() end end
@@ -189,34 +194,24 @@ local function ClearESPs()
     esps = {}
 end
 
--- ULTRA FAST: Tự động hồi máu siêu tốc
+-- ULTRA FAST BANDAGE
 local function performQuickHeal()
     if isHealing then return end
     isHealing = true
     
-    -- Kiểm tra character tồn tại
     if not Character or not Character.Parent then
         isHealing = false
         return
     end
     
-    -- Lưu tool đang cầm hiện tại
     local currentTool = Character:FindFirstChildOfClass("Tool")
-    if currentTool then
-        lastTool = currentTool
-    end
+    if currentTool then lastTool = currentTool end
     
-    -- Tìm băng gạc siêu nhanh
     local bandage = nil
     for _, item in ipairs(backpack:GetChildren()) do
         if item:IsA("Tool") then
-            local nameLower = string.lower(item.Name)
-            if string.find(nameLower, "bandage") or 
-               string.find(nameLower, "băng") or 
-               string.find(nameLower, "gạc") or
-               string.find(nameLower, "med") or
-               string.find(nameLower, "health") or
-               string.find(nameLower, "heal") then
+            local n = string.lower(item.Name)
+            if n:find("bandage") or n:find("băng") or n:find("gạc") or n:find("med") or n:find("health") or n:find("heal") then
                 bandage = item
                 break
             end
@@ -224,16 +219,10 @@ local function performQuickHeal()
     end
     
     if not bandage then
-        -- Tìm trong character (có thể đang cầm)
         for _, item in ipairs(Character:GetChildren()) do
             if item:IsA("Tool") then
-                local nameLower = string.lower(item.Name)
-                if string.find(nameLower, "bandage") or 
-                   string.find(nameLower, "băng") or 
-                   string.find(nameLower, "gạc") or
-                   string.find(nameLower, "med") or
-                   string.find(nameLower, "health") or
-                   string.find(nameLower, "heal") then
+                local n = string.lower(item.Name)
+                if n:find("bandage") or n:find("băng") or n:find("gạc") or n:find("med") or n:find("health") or n:find("heal") then
                     bandage = item
                     break
                 end
@@ -246,37 +235,22 @@ local function performQuickHeal()
         return
     end
     
-    -- TH1: Băng gạc trong backpack
     if bandage.Parent == backpack then
-        -- Unequip tool hiện tại nếu có
-        if currentTool then
-            currentTool.Parent = backpack
-        end
-        
-        -- Equip băng gạc siêu nhanh
+        if currentTool then currentTool.Parent = backpack end
         bandage.Parent = Character
-        
-        -- Kích hoạt băng gạc ngay lập tức
+        task.wait()
         if Character:FindFirstChild(bandage.Name) then
-            -- Kích hoạt nhiều lần để chắc chắn
-            for i = 1, 5 do
+            for _ = 1, 5 do
                 bandage:Activate()
                 RunService.RenderStepped:Wait()
             end
         end
-        
-        -- Trả băng gạc về backpack ngay
         bandage.Parent = backpack
-        
-        -- Khôi phục tool cũ NGAY LẬP TỨC
-        if lastTool then
+        if lastTool and lastTool.Parent == backpack then
             lastTool.Parent = Character
         end
-    
-    -- TH2: Băng gạc đang được cầm
     elseif bandage.Parent == Character then
-        -- Kích hoạt trực tiếp
-        for i = 1, 5 do
+        for _ = 1, 5 do
             bandage:Activate()
             RunService.RenderStepped:Wait()
         end
@@ -285,335 +259,238 @@ local function performQuickHeal()
     isHealing = false
 end
 
--- Features
+-- Inputs
 local spinSpeed = NewInput("Tốc độ xoay:", 10)
-local hitSize = NewInput("Kích cỡ Hitbox:", 5)
+local hitSize   = NewInput("Kích cỡ Hitbox:", 5)
 local healThreshold = NewInput("Hồi máu khi dưới:", 80)
 
+-- Tab1: Auto Đánh
 local autoAtkGet, autoAtkSet = NewToggle("Tab1: Auto Đánh", function(on)
-    -- Xóa kết nối auto đánh cũ
-    for i = #conns, 1, -1 do
-        if tostring(conns[i]):find("Auto Đánh") then
-            conns[i]:Disconnect()
-            table.remove(conns, i)
-        end
-    end
-    
+    features.AutoAttack.enabled = on
     if on then
-        print("[DEBUG] Auto Đánh BẬT")
-        local conn = RunService.Heartbeat:Connect(function()
-            local tool = Character:FindFirstChildOfClass("Tool")
-            if tool and tool:IsA("Tool") then
-                tool:Activate()
-            end
+        if features.AutoAttack.conn then features.AutoAttack.conn:Disconnect() end
+        features.AutoAttack.conn = RunService.Heartbeat:Connect(function()
+            local tool = Character and Character:FindFirstChildOfClass("Tool")
+            if tool then tool:Activate() end
         end)
-        conns["Auto Đánh"] = conn
     else
-        print("[DEBUG] Auto Đánh TẮT")
+        if features.AutoAttack.conn then
+            features.AutoAttack.conn:Disconnect()
+            features.AutoAttack.conn = nil
+        end
     end
 end)
 
+-- Tab2: Xoay
 local spinGet, spinSet = NewToggle("Tab2: Xoay", function(on)
+    features.Spin.enabled = on
     if on then
-        print("[DEBUG] Xoay BẬT")
         if spinVel then spinVel:Destroy() end
-        
         spinVel = Instance.new("BodyAngularVelocity")
         spinVel.Name = "SpinVelocity"
         spinVel.MaxTorque = Vector3.new(0, math.huge, 0)
         spinVel.AngularVelocity = Vector3.new(0, spinSpeed(), 0)
         spinVel.P = 10000
         spinVel.Parent = HumanoidRootPart
+        features.Spin.obj = spinVel
     else
-        print("[DEBUG] Xoay TẮT")
-        if spinVel then 
-            spinVel:Destroy()
-            spinVel = nil
-        end
+        if spinVel then spinVel:Destroy() spinVel = nil end
+        features.Spin.obj = nil
     end
 end)
 
+-- Tab3: Speed
 local speedGet, speedSet = NewToggle("Tab3: Speed", function(on)
+    features.Speed.enabled = on
     if Humanoid then
         Humanoid.WalkSpeed = on and 32 or 16
-        print("[DEBUG] Speed "..(on and "BẬT" or "TẮT"))
     end
 end)
 
-local hitGet, hitSet = NewToggle("Tab4: Hitbox", function(on)
+-- Tab4: Hitbox (chỉ auto đánh khi bạn nằm TRONG hitbox của đối thủ)
+local hitGet, hitSet = NewToggle("Tab4: Hitbox Expand + Auto Hit", function(on)
+    features.Hitbox.enabled = on
     ClearHitboxes()
     
-    -- Xóa kết nối hitbox cũ
-    if conns["Hitbox"] then
-        conns["Hitbox"]:Disconnect()
-        conns["Hitbox"] = nil
+    if features.Hitbox.conn then
+        features.Hitbox.conn:Disconnect()
+        features.Hitbox.conn = nil
     end
     
     if on then
-        print("[DEBUG] Hitbox BẬT")
-        local conn = RunService.Heartbeat:Connect(function()
+        features.Hitbox.conn = RunService.Heartbeat:Connect(function()
+            if not Character or not HumanoidRootPart then return end
+            
+            local localPos = HumanoidRootPart.Position
+            
             for _, p in Players:GetPlayers() do
                 if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local r = p.Character.HumanoidRootPart
+                    local targetRoot = p.Character.HumanoidRootPart
+                    
+                    -- Tạo / cập nhật hitbox
                     local hb = hitboxes[p.UserId] or Instance.new("Part")
+                    hb.Name = "Hitbox_" .. p.Name
                     hb.Size = Vector3.new(hitSize(), hitSize(), hitSize())
-                    hb.Transparency = 0.6
+                    hb.Transparency = 0.7
                     hb.BrickColor = BrickColor.new("Bright red")
                     hb.Material = Enum.Material.Neon
                     hb.Anchored = true
                     hb.CanCollide = false
-                    hb.Parent = p.Character
-                    hb.CFrame = r.CFrame
+                    hb.Parent = workspace
+                    hb.CFrame = targetRoot.CFrame
                     hitboxes[p.UserId] = hb
-
-                    local op = OverlapParams.new()
-                    op.FilterDescendantsInstances = {Character}
-                    op.FilterType = Enum.RaycastFilterType.Include
                     
-                    if workspace:GetPartsInPart(hb, op) and #workspace:GetPartsInPart(hb, op) > 0 then
+                    -- Kiểm tra bạn có nằm trong vùng hitbox không
+                    local distance = (localPos - targetRoot.Position).Magnitude
+                    local hitboxRadius = hitSize() / 2
+                    
+                    if distance <= hitboxRadius then
                         local tool = Character:FindFirstChildOfClass("Tool")
                         if tool then
-                            local mr = HumanoidRootPart
-                            local tp = Vector3.new(r.Position.X, mr.Position.Y, r.Position.Z)
-                            mr.CFrame = CFrame.new(mr.Position, tp)
+                            -- Quay mặt về đối thủ (giữ nguyên chiều cao)
+                            local lookAt = Vector3.new(targetRoot.Position.X, localPos.Y, targetRoot.Position.Z)
+                            HumanoidRootPart.CFrame = CFrame.new(localPos, lookAt)
+                            
+                            -- Auto đánh
                             tool:Activate()
                         end
                     end
                 end
             end
         end)
-        conns["Hitbox"] = conn
     else
-        print("[DEBUG] Hitbox TẮT")
         ClearHitboxes()
     end
 end)
 
--- ULTRA FAST: Băng Gạc siêu tốc
+-- Tab5: Băng Gạc
 local bandGet, bandSet = NewToggle("Tab5: Băng Gạc", function(on)
-    -- Xóa kết nối băng gạc cũ
-    if conns["Băng Gạc"] then
-        conns["Băng Gạc"]:Disconnect()
-        conns["Băng Gạc"] = nil
+    features.Bandage.enabled = on
+    if features.Bandage.conn then
+        features.Bandage.conn:Disconnect()
+        features.Bandage.conn = nil
     end
     
     if on then
-        print("[DEBUG] Băng Gạc BẬT (Ngưỡng: " .. healThreshold() .. " HP)")
-        
-        -- Biến để tránh spam
         local lastHealTime = 0
-        local healCooldown = 1.5 -- Cooldown 1.5 giây
+        local cooldown = 1.5
         
-        local conn = RunService.Heartbeat:Connect(function()
-            -- Kiểm tra character tồn tại
-            if not Character or not Character.Parent then
-                return
-            end
+        features.Bandage.conn = RunService.Heartbeat:Connect(function()
+            if not Character or not Humanoid or Humanoid.Health <= 0 then return end
             
-            -- Kiểm tra humanoid
-            local currentHumanoid = Character:FindFirstChild("Humanoid")
-            if not currentHumanoid or currentHumanoid.Health <= 0 then 
-                return 
-            end
-            
-            local currentHealth = currentHumanoid.Health
-            local threshold = healThreshold()
-            local currentTime = tick()
-            
-            -- Kiểm tra nếu máu dưới ngưỡng VÀ đã qua cooldown
-            if currentHealth < threshold and not isHealing and (currentTime - lastHealTime) > healCooldown then
-                -- Thực hiện hồi máu
+            local now = tick()
+            if Humanoid.Health < healThreshold() and not isHealing and (now - lastHealTime) > cooldown then
                 performQuickHeal()
-                
-                -- Cập nhật thời gian hồi máu cuối cùng
-                lastHealTime = currentTime
+                lastHealTime = now
             end
         end)
-        
-        conns["Băng Gạc"] = conn
-    else
-        print("[DEBUG] Băng Gạc TẮT")
-        isHealing = false
     end
 end)
 
+-- Tab6: ESP
 local espGet, espSet = NewToggle("Tab6: ESP (Máu)", function(on)
+    features.ESP.enabled = on
     ClearESPs()
-    
-    -- Xóa kết nối ESP cũ
-    if conns["ESP"] then
-        conns["ESP"]:Disconnect()
-        conns["ESP"] = nil
-    end
+    if features.ESP.conn then features.ESP.conn:Disconnect() features.ESP.conn = nil end
+    if features.ESP.playerAddedConn then features.ESP.playerAddedConn:Disconnect() features.ESP.playerAddedConn = nil end
     
     if on then
-        print("[DEBUG] ESP BẬT")
-        
-        -- Hàm tạo ESP cho một người chơi
-        local function createESP(player)
-            if player == LocalPlayer then return end
-            if not player.Character then return end
-            
-            local head = player.Character:FindFirstChild("Head")
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            
-            if not head or not humanoid then return end
-            
-            -- Xóa ESP cũ nếu có
-            if esps[player] and esps[player][1] then
-                esps[player][1]:Destroy()
-            end
+        local function createESP(p)
+            if p == LocalPlayer or not p.Character then return end
+            local head = p.Character:FindFirstChild("Head")
+            local hum = p.Character:FindFirstChild("Humanoid")
+            if not head or not hum then return end
             
             local bb = Instance.new("BillboardGui")
-            bb.Name = "ESP_" .. player.Name
+            bb.Name = "ESP_"..p.Name
             bb.Parent = head
-            bb.Size = UDim2.new(0, 80, 0, 30)
-            bb.StudsOffset = Vector3.new(0, 3, 0)
+            bb.Size = UDim2.new(0,80,0,30)
+            bb.StudsOffset = Vector3.new(0,3,0)
             bb.AlwaysOnTop = true
             bb.Adornee = head
 
-            local t = Instance.new("TextLabel")
-            t.Name = "HealthText"
-            t.Size = UDim2.new(1, 0, 1, 0)
-            t.BackgroundTransparency = 1
-            t.Text = math.floor(humanoid.Health)
-            t.TextColor3 = Color3.new(1, 1, 1)
-            t.TextStrokeTransparency = 0
-            t.TextStrokeColor3 = Color3.new(0, 0, 0)
-            t.TextSize = 14
-            t.Font = Enum.Font.GothamBold
-            t.Parent = bb
+            local txt = Instance.new("TextLabel")
+            txt.Size = UDim2.new(1,0,1,0)
+            txt.BackgroundTransparency = 1
+            txt.Text = math.floor(hum.Health)
+            txt.TextColor3 = Color3.new(1,1,1)
+            txt.TextStrokeTransparency = 0
+            txt.TextStrokeColor3 = Color3.new(0,0,0)
+            txt.TextSize = 14
+            txt.Font = Enum.Font.GothamBold
+            txt.Parent = bb
 
-            esps[player] = {bb, t, humanoid}
+            esps[p] = {bb, txt, hum}
         end
         
-        -- Tạo ESP cho tất cả người chơi hiện có
-        for _, player in Players:GetPlayers() do
-            createESP(player)
-        end
+        for _, p in Players:GetPlayers() do createESP(p) end
         
-        -- Thêm ESP khi có người chơi mới
-        local playerAddedConn = Players.PlayerAdded:Connect(function(player)
-            player.CharacterAdded:Connect(function()
-                createESP(player)
-            end)
+        features.ESP.playerAddedConn = Players.PlayerAdded:Connect(function(p)
+            p.CharacterAdded:Connect(function() createESP(p) end)
         end)
         
-        -- Cập nhật ESP theo thời gian thực
-        local conn = RunService.Heartbeat:Connect(function()
-            for player, data in pairs(esps) do
-                if player and player.Character and player.Character:FindFirstChild("Humanoid") and data[1] and data[2] then
-                    local health = math.floor(player.Character.Humanoid.Health)
-                    data[2].Text = tostring(health)
-                    
-                    -- Đổi màu theo máu
-                    if health > 50 then
-                        data[2].TextColor3 = Color3.fromRGB(0, 255, 0)
-                    elseif health > 25 then
-                        data[2].TextColor3 = Color3.fromRGB(255, 255, 0)
-                    else
-                        data[2].TextColor3 = Color3.fromRGB(255, 0, 0)
-                    end
+        features.ESP.conn = RunService.Heartbeat:Connect(function()
+            for p, data in pairs(esps) do
+                if p and p.Character and p.Character:FindFirstChild("Humanoid") and data[1] and data[2] then
+                    local h = math.floor(p.Character.Humanoid.Health)
+                    data[2].Text = tostring(h)
+                    data[2].TextColor3 = h > 50 and Color3.fromRGB(0,255,0) or (h > 25 and Color3.fromRGB(255,255,0) or Color3.fromRGB(255,0,0))
                 else
-                    -- Xóa ESP nếu người chơi không còn tồn tại
-                    if data and data[1] then
-                        data[1]:Destroy()
-                    end
-                    esps[player] = nil
+                    if data[1] then data[1]:Destroy() end
+                    esps[p] = nil
                 end
             end
         end)
-        
-        conns["ESP"] = conn
-        conns["PlayerAdded"] = playerAddedConn
-    else
-        print("[DEBUG] ESP TẮT")
-        ClearESPs()
     end
 end)
 
 UpdateScroll()
 
--- Open/Close Menu
 MainButton.MouseButton1Click:Connect(function()
     Menu.Visible = not Menu.Visible
 end)
 
--- Character respawn handler
+-- Respawn handler
 local function onCharAdded(char)
-    print("[DEBUG] Đã spawn character mới")
     Character = char
     Humanoid = char:WaitForChild("Humanoid")
     HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
     
-    -- Reset biến
     isHealing = false
     lastTool = nil
-    
-    -- Khôi phục tốc độ di chuyển
-    if speedGet() then
-        Humanoid.WalkSpeed = 32
-    end
-    
-    -- Khôi phục xoay
-    if spinGet() then
-        if spinVel then spinVel:Destroy() end
-        spinVel = Instance.new("BodyAngularVelocity")
-        spinVel.Name = "SpinVelocity"
-        spinVel.MaxTorque = Vector3.new(0, math.huge, 0)
-        spinVel.AngularVelocity = Vector3.new(0, spinSpeed(), 0)
-        spinVel.P = 10000
-        spinVel.Parent = HumanoidRootPart
-    end
-    
-    -- Clear các đối tượng cũ
     ClearHitboxes()
     ClearESPs()
     
-    -- Tự động bật lại các tính năng đang ON
-    task.wait(0.5)
+    task.wait(0.4)
     
-    if autoAtkGet() then
-        autoAtkSet(true)
-    end
+    if features.AutoAttack.enabled then autoAtkSet(true) end
+    if features.Spin.enabled        then spinSet(true)    end
+    if features.Speed.enabled       then speedSet(true)   end
+    if features.Hitbox.enabled      then hitSet(true)     end
+    if features.Bandage.enabled     then bandSet(true)    end
+    if features.ESP.enabled         then espSet(true)      end
     
-    if hitGet() then
-        hitSet(true)
-    end
-    
-    if bandGet() then
-        bandSet(true)
-    end
-    
-    if espGet() then
-        espSet(true)
-    end
-    
-    print("[Vietnam Hub] Đã khôi phục tất cả tính năng!")
+    print("[Vietnam Hub] Respawn - Đã khôi phục tính năng đang bật")
 end
 
--- Kết nối sự kiện
 LocalPlayer.CharacterAdded:Connect(onCharAdded)
 
--- Khởi tạo ban đầu
 if Character then
     task.wait(1)
     onCharAdded(Character)
 end
 
--- Cập nhật tốc độ xoay khi thay đổi giá trị
+-- Cập nhật tốc độ xoay realtime
 spawn(function()
-    local lastSpinSpeed = spinSpeed()
+    local last = spinSpeed()
     while true do
         task.wait(0.3)
-        local currentSpinSpeed = spinSpeed()
-        if currentSpinSpeed ~= lastSpinSpeed and spinGet() then
-            lastSpinSpeed = currentSpinSpeed
-            if spinVel then
-                spinVel.AngularVelocity = Vector3.new(0, currentSpinSpeed, 0)
-            end
+        local cur = spinSpeed()
+        if cur ~= last and features.Spin.enabled and spinVel then
+            last = cur
+            spinVel.AngularVelocity = Vector3.new(0, cur, 0)
         end
     end
 end)
 
-print("[Vietnam Hub] Đã load xong! Bật menu để sử dụng.")
+print("[Vietnam Hub] Đã load xong! Nhấn nút 👑 để mở menu.")

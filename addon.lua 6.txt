@@ -1,5 +1,8 @@
 -- Vietnam Hub - Dcmoilha Script (FIXED VERSION)
--- Fixed: Băng gạc hoạt động nhanh, có thể nhập số máu muốn hồi
+-- Fixed: 
+-- 1. Băng gạc hoạt động nhanh, có thể nhập số máu muốn hồi
+-- 2. ESP không hiển thị khi người chơi hồi sinh
+-- 3. Băng gạc không hoạt động khi hồi sinh
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -173,6 +176,16 @@ local esps = {}
 local isHealing = false
 local spinVel = nil
 
+-- Biến để theo dõi trạng thái các tính năng
+local featureStates = {
+    autoAttack = false,
+    spin = false,
+    speed = false,
+    hitbox = false,
+    bandage = false,
+    esp = false
+}
+
 local function DisconnectAll()
     for _, c in pairs(conns) do if c then c:Disconnect() end end
     conns = {}
@@ -184,14 +197,20 @@ local function ClearHitboxes()
 end
 
 local function ClearESPs()
-    for _, e in pairs(esps) do if e then e:Destroy() end end
+    for _, e in pairs(esps) do if e and e[1] then e[1]:Destroy() end end
     esps = {}
 end
 
--- Tự động hồi máu nhanh (FIXED - TỐI ƯU TỐC ĐỘ)
+-- VỪA FIX: Tự động hồi máu nhanh (HOẠT ĐỘNG KHI HỒI SINH)
 local function performQuickHeal()
     if isHealing then return end
     isHealing = true
+    
+    -- Kiểm tra lại character và humanoid
+    if not Character or not Character:IsDescendantOf(workspace) then
+        isHealing = false
+        return
+    end
     
     -- Lưu tool đang cầm hiện tại
     local currentTool = Character:FindFirstChildOfClass("Tool")
@@ -251,6 +270,8 @@ local hitSize = NewInput("Kích cỡ Hitbox:", 5)
 local healThreshold = NewInput("Hồi máu khi dưới:", 80)
 
 local autoAtkGet, autoAtkSet = NewToggle("Tab1: Auto Đánh", function(on)
+    featureStates.autoAttack = on
+    
     -- Xóa kết nối auto đánh cũ
     for i = #conns, 1, -1 do
         if tostring(conns[i]):find("Auto Đánh") then
@@ -274,6 +295,7 @@ local autoAtkGet, autoAtkSet = NewToggle("Tab1: Auto Đánh", function(on)
 end)
 
 local spinGet, spinSet = NewToggle("Tab2: Xoay", function(on)
+    featureStates.spin = on
     if on then
         print("[DEBUG] Xoay BẬT")
         if spinVel then spinVel:Destroy() end
@@ -294,6 +316,7 @@ local spinGet, spinSet = NewToggle("Tab2: Xoay", function(on)
 end)
 
 local speedGet, speedSet = NewToggle("Tab3: Speed", function(on)
+    featureStates.speed = on
     if Humanoid then
         Humanoid.WalkSpeed = on and 32 or 16
         print("[DEBUG] Speed "..(on and "BẬT" or "TẮT"))
@@ -301,6 +324,7 @@ local speedGet, speedSet = NewToggle("Tab3: Speed", function(on)
 end)
 
 local hitGet, hitSet = NewToggle("Tab4: Hitbox", function(on)
+    featureStates.hitbox = on
     ClearHitboxes()
     
     -- Xóa kết nối hitbox cũ
@@ -349,8 +373,10 @@ local hitGet, hitSet = NewToggle("Tab4: Hitbox", function(on)
     end
 end)
 
--- Băng Gạc (SIÊU NHANH - NHẬP SỐ MÁU MUỐN HỒI)
+-- VỪA FIX: Băng Gạc (SIÊU NHANH - NHẬP SỐ MÁU MUỐN HỒI)
 local bandGet, bandSet = NewToggle("Tab5: Băng Gạc", function(on)
+    featureStates.bandage = on
+    
     -- Xóa kết nối băng gạc cũ
     if conns["Băng Gạc"] then
         conns["Băng Gạc"]:Disconnect()
@@ -365,9 +391,17 @@ local bandGet, bandSet = NewToggle("Tab5: Băng Gạc", function(on)
         local healCooldown = 2.5 -- Cooldown 2.5 giây
         
         local conn = RunService.Heartbeat:Connect(function()
-            if not Humanoid or Humanoid.Health <= 0 then return end
+            -- Kiểm tra character và humanoid
+            if not Character or not Character:IsDescendantOf(workspace) then
+                return
+            end
             
-            local currentHealth = Humanoid.Health
+            local currentHumanoid = Character:FindFirstChild("Humanoid")
+            if not currentHumanoid or currentHumanoid.Health <= 0 then 
+                return 
+            end
+            
+            local currentHealth = currentHumanoid.Health
             local threshold = healThreshold()
             local currentTime = tick()
             
@@ -390,13 +424,19 @@ local bandGet, bandSet = NewToggle("Tab5: Băng Gạc", function(on)
     end
 end)
 
+-- VỪA FIX: ESP (Máu) - HOẠT ĐỘNG KHI HỒI SINH
 local espGet, espSet = NewToggle("Tab6: ESP (Máu)", function(on)
+    featureStates.esp = on
     ClearESPs()
     
     -- Xóa kết nối ESP cũ
     if conns["ESP"] then
         conns["ESP"]:Disconnect()
         conns["ESP"] = nil
+    end
+    if conns["PlayerAdded"] then
+        conns["PlayerAdded"]:Disconnect()
+        conns["PlayerAdded"] = nil
     end
     
     if on then
@@ -405,10 +445,15 @@ local espGet, espSet = NewToggle("Tab6: ESP (Máu)", function(on)
         -- Hàm tạo ESP cho một người chơi
         local function createESP(player)
             if player == LocalPlayer then return end
-            if not player.Character then return end
             
-            local head = player.Character:FindFirstChild("Head")
-            local humanoid = player.Character:FindFirstChild("Humanoid")
+            -- Đợi character tồn tại
+            if not player.Character then
+                player.CharacterAdded:Wait()
+            end
+            
+            local character = player.Character
+            local head = character:WaitForChild("Head", 5)
+            local humanoid = character:WaitForChild("Humanoid", 5)
             
             if not head or not humanoid then return end
             
@@ -442,15 +487,31 @@ local espGet, espSet = NewToggle("Tab6: ESP (Máu)", function(on)
         
         -- Tạo ESP cho tất cả người chơi hiện có
         for _, player in Players:GetPlayers() do
-            createESP(player)
+            if player ~= LocalPlayer then
+                coroutine.wrap(function()
+                    createESP(player)
+                end)()
+            end
         end
         
         -- Thêm ESP khi có người chơi mới
         local playerAddedConn = Players.PlayerAdded:Connect(function(player)
-            player.CharacterAdded:Connect(function()
+            coroutine.wrap(function()
                 createESP(player)
-            end)
+            end)()
         end)
+        
+        -- Kết nối ESP cho các character hiện tại
+        for _, player in Players:GetPlayers() do
+            if player ~= LocalPlayer then
+                player.CharacterAdded:Connect(function(character)
+                    if featureStates.esp then
+                        task.wait(1) -- Chờ character load
+                        createESP(player)
+                    end
+                end)
+            end
+        end
         
         -- Cập nhật ESP theo thời gian thực
         local conn = RunService.Heartbeat:Connect(function()
@@ -492,7 +553,7 @@ MainButton.MouseButton1Click:Connect(function()
     Menu.Visible = not Menu.Visible
 end)
 
--- Character respawn handler (SIÊU NHANH)
+-- VỪA FIX: Character respawn handler (SIÊU NHANH)
 local function onCharAdded(char)
     print("[DEBUG] Đã spawn character mới")
     Character = char
@@ -502,13 +563,19 @@ local function onCharAdded(char)
     -- Reset biến
     isHealing = false
     
+    -- Clear các đối tượng cũ
+    ClearHitboxes()
+    
+    -- Chờ một chút để character load đầy đủ
+    task.wait(1)
+    
     -- Khôi phục tốc độ di chuyển
-    if speedGet() then
+    if featureStates.speed then
         Humanoid.WalkSpeed = 32
     end
     
     -- Khôi phục xoay
-    if spinGet() then
+    if featureStates.spin then
         if spinVel then spinVel:Destroy() end
         spinVel = Instance.new("BodyAngularVelocity")
         spinVel.Name = "SpinVelocity"
@@ -518,27 +585,60 @@ local function onCharAdded(char)
         spinVel.Parent = HumanoidRootPart
     end
     
-    -- Clear các đối tượng cũ
-    ClearHitboxes()
-    ClearESPs()
+    -- Khôi phục lại các tính năng ESP
+    if featureStates.esp then
+        -- Xóa ESP cũ
+        ClearESPs()
+        
+        -- Tạo ESP cho tất cả người chơi
+        for _, player in Players:GetPlayers() do
+            if player ~= LocalPlayer and player.Character then
+                coroutine.wrap(function()
+                    task.wait(0.5)
+                    
+                    local character = player.Character
+                    local head = character:FindFirstChild("Head")
+                    local humanoid = character:FindFirstChild("Humanoid")
+                    
+                    if head and humanoid then
+                        local bb = Instance.new("BillboardGui")
+                        bb.Name = "ESP_" .. player.Name
+                        bb.Parent = head
+                        bb.Size = UDim2.new(0, 80, 0, 30)
+                        bb.StudsOffset = Vector3.new(0, 3, 0)
+                        bb.AlwaysOnTop = true
+                        bb.Adornee = head
+
+                        local t = Instance.new("TextLabel")
+                        t.Name = "HealthText"
+                        t.Size = UDim2.new(1, 0, 1, 0)
+                        t.BackgroundTransparency = 1
+                        t.Text = math.floor(humanoid.Health)
+                        t.TextColor3 = Color3.new(1, 1, 1)
+                        t.TextStrokeTransparency = 0
+                        t.TextStrokeColor3 = Color3.new(0, 0, 0)
+                        t.TextSize = 14
+                        t.Font = Enum.Font.GothamBold
+                        t.Parent = bb
+
+                        esps[player] = {bb, t, humanoid}
+                    end
+                end)()
+            end
+        end
+    end
     
     -- Tự động bật lại các tính năng đang ON
-    task.wait(0.5) -- Chờ một chút để character load đầy đủ
-    
-    if autoAtkGet() then
+    if featureStates.autoAttack then
         autoAtkSet(true)
     end
     
-    if hitGet() then
+    if featureStates.hitbox then
         hitSet(true)
     end
     
-    if bandGet() then
+    if featureStates.bandage then
         bandSet(true)
-    end
-    
-    if espGet() then
-        espSet(true)
     end
     
     print("[Vietnam Hub] Đã khôi phục tất cả tính năng!")
@@ -559,7 +659,7 @@ spawn(function()
     while true do
         task.wait(0.3)
         local currentSpinSpeed = spinSpeed()
-        if currentSpinSpeed ~= lastSpinSpeed and spinGet() then
+        if currentSpinSpeed ~= lastSpinSpeed and featureStates.spin then
             lastSpinSpeed = currentSpinSpeed
             if spinVel then
                 spinVel.AngularVelocity = Vector3.new(0, currentSpinSpeed, 0)

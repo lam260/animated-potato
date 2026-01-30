@@ -1,5 +1,6 @@
--- Vietnam Hub - Dcmoilha Script (ULTRA FAST BANDAGE + Hitbox Fix)
--- Fixed: Băng gạc siêu tốc, khôi phục khi respawn, Hitbox chỉ đánh khi bạn vào vùng
+-- Vietnam Hub - Dcmoilha Script (ULTRA FAST BANDAGE + Hitbox Fix + Full Respawn Fix)
+-- Fixed: Băng gạc siêu tốc, khôi phục khi respawn (bao gồm vãng sanh cực lạc + cổng đầu thai sau 10s)
+-- Tính năng tự heal sau khi quay lại map mà KHÔNG cần bật/tắt tab5 lại
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -168,7 +169,6 @@ local function NewInput(name, def)
 end
 
 -- Biến quản lý
-local conns = {}
 local hitboxes = {}
 local esps = {}
 local isHealing = false
@@ -199,16 +199,17 @@ local function performQuickHeal()
     if isHealing then return end
     isHealing = true
     
-    if not Character or not Character.Parent then
+    local char = LocalPlayer.Character
+    if not char or not char.Parent then
         isHealing = false
         return
     end
     
-    local currentTool = Character:FindFirstChildOfClass("Tool")
+    local currentTool = char:FindFirstChildOfClass("Tool")
     if currentTool then lastTool = currentTool end
     
     local bandage = nil
-    for _, item in ipairs(backpack:GetChildren()) do
+    for _, item in ipairs(LocalPlayer.Backpack:GetChildren()) do
         if item:IsA("Tool") then
             local n = string.lower(item.Name)
             if n:find("bandage") or n:find("băng") or n:find("gạc") or n:find("med") or n:find("health") or n:find("heal") then
@@ -219,7 +220,7 @@ local function performQuickHeal()
     end
     
     if not bandage then
-        for _, item in ipairs(Character:GetChildren()) do
+        for _, item in ipairs(char:GetChildren()) do
             if item:IsA("Tool") then
                 local n = string.lower(item.Name)
                 if n:find("bandage") or n:find("băng") or n:find("gạc") or n:find("med") or n:find("health") or n:find("heal") then
@@ -235,21 +236,21 @@ local function performQuickHeal()
         return
     end
     
-    if bandage.Parent == backpack then
-        if currentTool then currentTool.Parent = backpack end
-        bandage.Parent = Character
+    if bandage.Parent == LocalPlayer.Backpack then
+        if currentTool then currentTool.Parent = LocalPlayer.Backpack end
+        bandage.Parent = char
         task.wait()
-        if Character:FindFirstChild(bandage.Name) then
+        if char:FindFirstChild(bandage.Name) then
             for _ = 1, 5 do
                 bandage:Activate()
                 RunService.RenderStepped:Wait()
             end
         end
-        bandage.Parent = backpack
-        if lastTool and lastTool.Parent == backpack then
-            lastTool.Parent = Character
+        bandage.Parent = LocalPlayer.Backpack
+        if lastTool and lastTool.Parent == LocalPlayer.Backpack then
+            lastTool.Parent = char
         end
-    elseif bandage.Parent == Character then
+    elseif bandage.Parent == char then
         for _ = 1, 5 do
             bandage:Activate()
             RunService.RenderStepped:Wait()
@@ -270,7 +271,7 @@ local autoAtkGet, autoAtkSet = NewToggle("Tab1: Auto Đánh", function(on)
     if on then
         if features.AutoAttack.conn then features.AutoAttack.conn:Disconnect() end
         features.AutoAttack.conn = RunService.Heartbeat:Connect(function()
-            local tool = Character and Character:FindFirstChildOfClass("Tool")
+            local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
             if tool then tool:Activate() end
         end)
     else
@@ -302,12 +303,13 @@ end)
 -- Tab3: Speed
 local speedGet, speedSet = NewToggle("Tab3: Speed", function(on)
     features.Speed.enabled = on
-    if Humanoid then
-        Humanoid.WalkSpeed = on and 32 or 16
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if hum then
+        hum.WalkSpeed = on and 32 or 16
     end
 end)
 
--- Tab4: Hitbox (chỉ auto đánh khi bạn nằm TRONG hitbox của đối thủ)
+-- Tab4: Hitbox Expand + Auto Hit (chỉ đánh khi bạn vào vùng hitbox của đối thủ)
 local hitGet, hitSet = NewToggle("Tab4: Hitbox Expand + Auto Hit", function(on)
     features.Hitbox.enabled = on
     ClearHitboxes()
@@ -319,15 +321,15 @@ local hitGet, hitSet = NewToggle("Tab4: Hitbox Expand + Auto Hit", function(on)
     
     if on then
         features.Hitbox.conn = RunService.Heartbeat:Connect(function()
-            if not Character or not HumanoidRootPart then return end
+            local char = LocalPlayer.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then return end
             
-            local localPos = HumanoidRootPart.Position
+            local localPos = char.HumanoidRootPart.Position
             
             for _, p in Players:GetPlayers() do
                 if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                     local targetRoot = p.Character.HumanoidRootPart
                     
-                    -- Tạo / cập nhật hitbox
                     local hb = hitboxes[p.UserId] or Instance.new("Part")
                     hb.Name = "Hitbox_" .. p.Name
                     hb.Size = Vector3.new(hitSize(), hitSize(), hitSize())
@@ -340,18 +342,14 @@ local hitGet, hitSet = NewToggle("Tab4: Hitbox Expand + Auto Hit", function(on)
                     hb.CFrame = targetRoot.CFrame
                     hitboxes[p.UserId] = hb
                     
-                    -- Kiểm tra bạn có nằm trong vùng hitbox không
                     local distance = (localPos - targetRoot.Position).Magnitude
                     local hitboxRadius = hitSize() / 2
                     
                     if distance <= hitboxRadius then
-                        local tool = Character:FindFirstChildOfClass("Tool")
+                        local tool = char:FindFirstChildOfClass("Tool")
                         if tool then
-                            -- Quay mặt về đối thủ (giữ nguyên chiều cao)
                             local lookAt = Vector3.new(targetRoot.Position.X, localPos.Y, targetRoot.Position.Z)
-                            HumanoidRootPart.CFrame = CFrame.new(localPos, lookAt)
-                            
-                            -- Auto đánh
+                            char.HumanoidRootPart.CFrame = CFrame.new(localPos, lookAt)
                             tool:Activate()
                         end
                     end
@@ -363,9 +361,10 @@ local hitGet, hitSet = NewToggle("Tab4: Hitbox Expand + Auto Hit", function(on)
     end
 end)
 
--- Tab5: Băng Gạc
+-- Tab5: Băng Gạc - FULL FIX RESPAWN
 local bandGet, bandSet = NewToggle("Tab5: Băng Gạc", function(on)
     features.Bandage.enabled = on
+    
     if features.Bandage.conn then
         features.Bandage.conn:Disconnect()
         features.Bandage.conn = nil
@@ -376,10 +375,25 @@ local bandGet, bandSet = NewToggle("Tab5: Băng Gạc", function(on)
         local cooldown = 1.5
         
         features.Bandage.conn = RunService.Heartbeat:Connect(function()
-            if not Character or not Humanoid or Humanoid.Health <= 0 then return end
+            local char = LocalPlayer.Character
+            if not char then 
+                lastHealTime = 0
+                return 
+            end
+            
+            local hum = char:FindFirstChildWhichIsA("Humanoid")
+            if not hum or hum.Health <= 0 then
+                lastHealTime = 0
+                return
+            end
             
             local now = tick()
-            if Humanoid.Health < healThreshold() and not isHealing and (now - lastHealTime) > cooldown then
+            local currentHP = hum.Health
+            
+            if currentHP < healThreshold() 
+               and not isHealing 
+               and (now - lastHealTime) >= cooldown then
+                
                 performQuickHeal()
                 lastHealTime = now
             end
@@ -387,7 +401,7 @@ local bandGet, bandSet = NewToggle("Tab5: Băng Gạc", function(on)
     end
 end)
 
--- Tab6: ESP
+-- Tab6: ESP (Máu)
 local espGet, espSet = NewToggle("Tab6: ESP (Máu)", function(on)
     features.ESP.enabled = on
     ClearESPs()
@@ -450,30 +464,43 @@ MainButton.MouseButton1Click:Connect(function()
     Menu.Visible = not Menu.Visible
 end)
 
--- Respawn handler
+-- Respawn handler - FULL FIX
 local function onCharAdded(char)
     Character = char
-    Humanoid = char:WaitForChild("Humanoid")
-    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
+    Humanoid = char:WaitForChild("Humanoid", 10)
+    HumanoidRootPart = char:WaitForChild("HumanoidRootPart", 10)
     
     isHealing = false
     lastTool = nil
+    
     ClearHitboxes()
     ClearESPs()
     
-    task.wait(0.4)
+    -- Khôi phục Bandage nếu đang bật
+    if features.Bandage.enabled then
+        bandSet(true)
+    end
+    
+    task.wait(1.2)  -- chờ lâu hơn để nhân vật ổn định sau cổng đầu thai
     
     if features.AutoAttack.enabled then autoAtkSet(true) end
     if features.Spin.enabled        then spinSet(true)    end
     if features.Speed.enabled       then speedSet(true)   end
     if features.Hitbox.enabled      then hitSet(true)     end
-    if features.Bandage.enabled     then bandSet(true)    end
     if features.ESP.enabled         then espSet(true)      end
     
-    print("[Vietnam Hub] Respawn - Đã khôi phục tính năng đang bật")
+    print("[Vietnam Hub] Respawn hoàn tất - Bandage tự heal khi máu thấp")
 end
 
 LocalPlayer.CharacterAdded:Connect(onCharAdded)
+
+-- Reset khi chết (phòng trường hợp delay respawn dài)
+if Humanoid then
+    Humanoid.Died:Connect(function()
+        isHealing = false
+        print("[DEBUG] Nhân vật chết - Chuẩn bị reset Bandage")
+    end)
+end
 
 if Character then
     task.wait(1)
@@ -493,4 +520,15 @@ spawn(function()
     end
 end)
 
-print("[Vietnam Hub] Đã load xong! Nhấn nút 👑 để mở menu.")
+-- Loop kiểm tra character thay đổi (phòng trường hợp CharacterAdded không trigger)
+spawn(function()
+    while true do
+        task.wait(3)
+        local curr = LocalPlayer.Character
+        if curr and curr ~= Character then
+            onCharAdded(curr)
+        end
+    end
+end)
+
+print("[Vietnam Hub] Đã load xong! Nhấn nút 👑 để mở menu. Bandage tự động heal sau mọi respawn.")

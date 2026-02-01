@@ -8,18 +8,17 @@ local cam = workspace.CurrentCamera
 
 -- STATE
 local freecam = false
-local speed = 40
+local speed = 50
 local yaw, pitch = 0, 0
 local fov = 70
 local zoomIn, zoomOut = false, false
-local hum, conn
+local hum, hrp, conn
 
 -- ================= GUI =================
 local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "FreeCam_WalkLike"
+gui.Name = "FreeCam_PRO"
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 -- 🫙 Toggle
 local toggle = Instance.new("TextButton", gui)
@@ -94,10 +93,18 @@ zoomDown.Position = UDim2.new(1,-80,0.5,0)
 local function startFreeCam()
 	local char = player.Character
 	hum = char:WaitForChild("Humanoid")
+	hrp = char:WaitForChild("HumanoidRootPart")
 
 	hum.WalkSpeed = 0
 	hum.JumpPower = 0
 	hum.AutoRotate = false
+
+	-- ẨN NHÂN VẬT
+	for _,v in pairs(char:GetDescendants()) do
+		if v:IsA("BasePart") then
+			v.LocalTransparencyModifier = 1
+		end
+	end
 
 	cam.CameraType = Enum.CameraType.Scriptable
 	cam.FieldOfView = fov
@@ -105,12 +112,24 @@ local function startFreeCam()
 	conn = RunService.RenderStepped:Connect(function(dt)
 		local dir = hum.MoveDirection
 
-		-- 🎮 JOYSTICK = ĐI NHƯ ĐI BỘ (FORWARD / BACK / LEFT / RIGHT)
-		local move =
-			(cam.CFrame.LookVector * dir.Z +
-			 cam.CFrame.RightVector * dir.X) * speed * dt
+		-- 🔧 FIX HƯỚNG BAY (KHÔNG NGƯỢC)
+		local forward = Vector3.new(
+			math.sin(math.rad(yaw)),
+			0,
+			math.cos(math.rad(yaw))
+		)
 
+		local right = Vector3.new(
+			forward.Z,
+			0,
+			-forward.X
+		)
+
+		local move = (forward * dir.Z + right * dir.X) * speed * dt
 		cam.CFrame = cam.CFrame + move
+
+		-- 👻 NHÂN VẬT THEO ẨN CAMERA (FIX STREAMING)
+		hrp.CFrame = cam.CFrame * CFrame.new(0,-3,0)
 
 		-- 🔍 ZOOM
 		if zoomIn then
@@ -127,10 +146,20 @@ local function stopFreeCam()
 	if conn then conn:Disconnect() end
 	cam.CameraType = Enum.CameraType.Custom
 	cam.FieldOfView = 70
+
 	if hum then
 		hum.WalkSpeed = 16
 		hum.JumpPower = 50
 		hum.AutoRotate = true
+	end
+
+	local char = player.Character
+	if char then
+		for _,v in pairs(char:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.LocalTransparencyModifier = 0
+			end
+		end
 	end
 end
 
@@ -155,11 +184,11 @@ camBtn.MouseButton1Click:Connect(function()
 end)
 
 speedUp.MouseButton1Click:Connect(function()
-	speed = math.clamp(speed + 10, 10, 150)
+	speed = math.clamp(speed + 10, 10, 200)
 end)
 
 speedDn.MouseButton1Click:Connect(function()
-	speed = math.clamp(speed - 10, 10, 150)
+	speed = math.clamp(speed - 10, 10, 200)
 end)
 
 zoomUp.InputBegan:Connect(function() zoomIn = true end)

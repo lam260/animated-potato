@@ -11,25 +11,25 @@ local freecam = false
 local speed = 50
 local fov = 70
 local zoomIn, zoomOut = false, false
-local verticalDir = 0 -- -1 xuống | 0 đứng | 1 lên
+local verticalDir = 0
 local hum, conn
+local lastTouchPos = nil
 
 -- ================= GUI =================
 local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "FreeCam_Fixed"
+gui.Name = "FreeCam_OneFinger"
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
 
 -- 🫙 Toggle
 local toggle = Instance.new("TextButton", gui)
-toggle.Size = UDim2.new(0,26,0,26)
-toggle.Position = UDim2.new(1,-40,0.5,-13)
+toggle.Size = UDim2.new(0,24,0,24)
+toggle.Position = UDim2.new(1,-40,0.5,-12)
 toggle.Text = "🫙"
 toggle.TextScaled = true
 toggle.BackgroundColor3 = Color3.fromRGB(40,40,40)
 toggle.TextColor3 = Color3.new(1,1,1)
 toggle.BorderSizePixel = 0
-toggle.ZIndex = 100
 toggle.Active = true
 toggle.Draggable = true
 
@@ -39,7 +39,6 @@ menu.Size = UDim2.new(0,220,0,220)
 menu.Position = UDim2.new(0.5,-110,0.5,-110)
 menu.BackgroundColor3 = Color3.fromRGB(20,20,20)
 menu.Visible = false
-menu.ZIndex = 99
 menu.Active = true
 menu.Draggable = true
 Instance.new("UICorner", menu)
@@ -47,10 +46,7 @@ Instance.new("UICorner", menu)
 local layout = Instance.new("UIListLayout", menu)
 layout.Padding = UDim.new(0,8)
 layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-local pad = Instance.new("UIPadding", menu)
-pad.PaddingTop = UDim.new(0,10)
-pad.PaddingBottom = UDim.new(0,10)
+Instance.new("UIPadding", menu).PaddingTop = UDim.new(0,10)
 
 local function btn(text)
 	local b = Instance.new("TextButton")
@@ -60,7 +56,6 @@ local function btn(text)
 	b.BackgroundColor3 = Color3.fromRGB(45,45,45)
 	b.TextColor3 = Color3.new(1,1,1)
 	b.BorderSizePixel = 0
-	b.ZIndex = 100
 	b.Parent = menu
 	Instance.new("UICorner", b)
 	return b
@@ -74,10 +69,9 @@ local speedDn = btn("➖ Giảm tốc bay")
 local zoomUp = Instance.new("TextButton", gui)
 zoomUp.Size = UDim2.new(0,36,0,36)
 zoomUp.Position = UDim2.new(1,-80,0.42,0)
-zoomUp.Text = "🔍+"
+zoomUp.Text = "⬆️"
 zoomUp.TextScaled = true
 zoomUp.Visible = false
-zoomUp.ZIndex = 100
 zoomUp.BackgroundColor3 = Color3.fromRGB(45,45,45)
 zoomUp.BorderSizePixel = 0
 zoomUp.Active = true
@@ -86,7 +80,7 @@ Instance.new("UICorner", zoomUp)
 
 local zoomDown = zoomUp:Clone()
 zoomDown.Parent = gui
-zoomDown.Text = "🔍-"
+zoomDown.Text = "⬇️"
 zoomDown.Position = UDim2.new(1,-80,0.5,0)
 
 -- ================= CORE =================
@@ -109,7 +103,7 @@ local function startFreeCam()
 			(cam.CFrame.LookVector * dir.Z +
 			 cam.CFrame.RightVector * dir.X) * speed * dt
 
-		-- BAY LÊN / XUỐNG = VUỐT
+		-- BAY CAO / THẤP
 		move += Vector3.new(0, verticalDir * speed * dt, 0)
 
 		cam.CFrame = cam.CFrame + move
@@ -169,17 +163,26 @@ zoomUp.InputEnded:Connect(function() zoomIn = false end)
 zoomDown.InputBegan:Connect(function() zoomOut = true end)
 zoomDown.InputEnded:Connect(function() zoomOut = false end)
 
--- ✋ VUỐT = BAY LÊN / XUỐNG
-UIS.TouchMoved:Connect(function(t)
-	if not freecam then return end
+-- ☝️ 1 NGÓN = XOAY + BAY CAO/THẤP
+UIS.TouchStarted:Connect(function(t)
+	lastTouchPos = t.Position
+end)
 
-	if t.Delta.Y < -2 then
-		verticalDir = 1 -- lên
-	elseif t.Delta.Y > 2 then
-		verticalDir = -1 -- xuống
+UIS.TouchMoved:Connect(function(t)
+	if not freecam or not lastTouchPos then return end
+
+	local deltaY = t.Position.Y - lastTouchPos.Y
+
+	if math.abs(deltaY) > 6 then
+		verticalDir = deltaY < 0 and 1 or -1
+	else
+		verticalDir = 0
 	end
+
+	lastTouchPos = t.Position
 end)
 
 UIS.TouchEnded:Connect(function()
 	verticalDir = 0
+	lastTouchPos = nil
 end)

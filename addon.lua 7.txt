@@ -9,14 +9,14 @@ local cam = workspace.CurrentCamera
 -- STATE
 local freecam = false
 local speed = 50
-local yaw, pitch = 0, 0
 local fov = 70
 local zoomIn, zoomOut = false, false
-local hum, hrp, conn
+local verticalDir = 0 -- -1 xuống | 0 đứng | 1 lên
+local hum, conn
 
 -- ================= GUI =================
 local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "FreeCam_PRO"
+gui.Name = "FreeCam_Fixed"
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
 
@@ -35,8 +35,8 @@ toggle.Draggable = true
 
 -- Menu
 local menu = Instance.new("Frame", gui)
-menu.Size = UDim2.new(0,220,0,260)
-menu.Position = UDim2.new(0.5,-110,0.5,-130)
+menu.Size = UDim2.new(0,220,0,220)
+menu.Position = UDim2.new(0.5,-110,0.5,-110)
 menu.BackgroundColor3 = Color3.fromRGB(20,20,20)
 menu.Visible = false
 menu.ZIndex = 99
@@ -93,18 +93,10 @@ zoomDown.Position = UDim2.new(1,-80,0.5,0)
 local function startFreeCam()
 	local char = player.Character
 	hum = char:WaitForChild("Humanoid")
-	hrp = char:WaitForChild("HumanoidRootPart")
 
 	hum.WalkSpeed = 0
 	hum.JumpPower = 0
 	hum.AutoRotate = false
-
-	-- ẨN NHÂN VẬT
-	for _,v in pairs(char:GetDescendants()) do
-		if v:IsA("BasePart") then
-			v.LocalTransparencyModifier = 1
-		end
-	end
 
 	cam.CameraType = Enum.CameraType.Scriptable
 	cam.FieldOfView = fov
@@ -112,26 +104,17 @@ local function startFreeCam()
 	conn = RunService.RenderStepped:Connect(function(dt)
 		local dir = hum.MoveDirection
 
-		-- 🔧 FIX HƯỚNG BAY (KHÔNG NGƯỢC)
-		local forward = Vector3.new(
-			math.sin(math.rad(yaw)),
-			0,
-			math.cos(math.rad(yaw))
-		)
+		-- BAY NGANG = JOYSTICK
+		local move =
+			(cam.CFrame.LookVector * dir.Z +
+			 cam.CFrame.RightVector * dir.X) * speed * dt
 
-		local right = Vector3.new(
-			forward.Z,
-			0,
-			-forward.X
-		)
+		-- BAY LÊN / XUỐNG = VUỐT
+		move += Vector3.new(0, verticalDir * speed * dt, 0)
 
-		local move = (forward * dir.Z + right * dir.X) * speed * dt
 		cam.CFrame = cam.CFrame + move
 
-		-- 👻 NHÂN VẬT THEO ẨN CAMERA (FIX STREAMING)
-		hrp.CFrame = cam.CFrame * CFrame.new(0,-3,0)
-
-		-- 🔍 ZOOM
+		-- ZOOM
 		if zoomIn then
 			fov = math.clamp(fov - 1.2, 20, 120)
 			cam.FieldOfView = fov
@@ -146,20 +129,10 @@ local function stopFreeCam()
 	if conn then conn:Disconnect() end
 	cam.CameraType = Enum.CameraType.Custom
 	cam.FieldOfView = 70
-
 	if hum then
 		hum.WalkSpeed = 16
 		hum.JumpPower = 50
 		hum.AutoRotate = true
-	end
-
-	local char = player.Character
-	if char then
-		for _,v in pairs(char:GetDescendants()) do
-			if v:IsA("BasePart") then
-				v.LocalTransparencyModifier = 0
-			end
-		end
 	end
 end
 
@@ -196,16 +169,17 @@ zoomUp.InputEnded:Connect(function() zoomIn = false end)
 zoomDown.InputBegan:Connect(function() zoomOut = true end)
 zoomDown.InputEnded:Connect(function() zoomOut = false end)
 
--- ✋ VUỐT TAY = XOAY CAM
+-- ✋ VUỐT = BAY LÊN / XUỐNG
 UIS.TouchMoved:Connect(function(t)
 	if not freecam then return end
-	if t.Position.X < cam.ViewportSize.X * 0.45 then return end
 
-	yaw -= t.Delta.X * 0.25
-	pitch = math.clamp(pitch - t.Delta.Y * 0.25, -85, 85)
+	if t.Delta.Y < -2 then
+		verticalDir = 1 -- lên
+	elseif t.Delta.Y > 2 then
+		verticalDir = -1 -- xuống
+	end
+end)
 
-	cam.CFrame =
-		CFrame.new(cam.CFrame.Position)
-		* CFrame.Angles(0, math.rad(yaw), 0)
-		* CFrame.Angles(math.rad(pitch), 0, 0)
+UIS.TouchEnded:Connect(function()
+	verticalDir = 0
 end)

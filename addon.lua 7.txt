@@ -1,0 +1,182 @@
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+
+-- STATE
+local freecam = false
+local speed = 40
+local yaw, pitch = 0, 0
+local fov = 70
+local zoomIn, zoomOut = false, false
+local hum, conn
+
+-- ================= GUI =================
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "FreeCam_WalkLike"
+gui.IgnoreGuiInset = true
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- 🫙 Toggle
+local toggle = Instance.new("TextButton", gui)
+toggle.Size = UDim2.new(0,26,0,26)
+toggle.Position = UDim2.new(1,-40,0.5,-13)
+toggle.Text = "🫙"
+toggle.TextScaled = true
+toggle.BackgroundColor3 = Color3.fromRGB(40,40,40)
+toggle.TextColor3 = Color3.new(1,1,1)
+toggle.BorderSizePixel = 0
+toggle.ZIndex = 100
+toggle.Active = true
+toggle.Draggable = true
+
+-- Menu
+local menu = Instance.new("Frame", gui)
+menu.Size = UDim2.new(0,220,0,260)
+menu.Position = UDim2.new(0.5,-110,0.5,-130)
+menu.BackgroundColor3 = Color3.fromRGB(20,20,20)
+menu.Visible = false
+menu.ZIndex = 99
+menu.Active = true
+menu.Draggable = true
+Instance.new("UICorner", menu)
+
+local layout = Instance.new("UIListLayout", menu)
+layout.Padding = UDim.new(0,8)
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local pad = Instance.new("UIPadding", menu)
+pad.PaddingTop = UDim.new(0,10)
+pad.PaddingBottom = UDim.new(0,10)
+
+local function btn(text)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1,-20,0,36)
+	b.Text = text
+	b.TextScaled = true
+	b.BackgroundColor3 = Color3.fromRGB(45,45,45)
+	b.TextColor3 = Color3.new(1,1,1)
+	b.BorderSizePixel = 0
+	b.ZIndex = 100
+	b.Parent = menu
+	Instance.new("UICorner", b)
+	return b
+end
+
+local camBtn  = btn("🎥 FreeCam: OFF")
+local speedUp = btn("➕ Tăng tốc bay")
+local speedDn = btn("➖ Giảm tốc bay")
+
+-- Zoom buttons
+local zoomUp = Instance.new("TextButton", gui)
+zoomUp.Size = UDim2.new(0,36,0,36)
+zoomUp.Position = UDim2.new(1,-80,0.42,0)
+zoomUp.Text = "🔍+"
+zoomUp.TextScaled = true
+zoomUp.Visible = false
+zoomUp.ZIndex = 100
+zoomUp.BackgroundColor3 = Color3.fromRGB(45,45,45)
+zoomUp.BorderSizePixel = 0
+zoomUp.Active = true
+zoomUp.Draggable = true
+Instance.new("UICorner", zoomUp)
+
+local zoomDown = zoomUp:Clone()
+zoomDown.Parent = gui
+zoomDown.Text = "🔍-"
+zoomDown.Position = UDim2.new(1,-80,0.5,0)
+
+-- ================= CORE =================
+local function startFreeCam()
+	local char = player.Character
+	hum = char:WaitForChild("Humanoid")
+
+	hum.WalkSpeed = 0
+	hum.JumpPower = 0
+	hum.AutoRotate = false
+
+	cam.CameraType = Enum.CameraType.Scriptable
+	cam.FieldOfView = fov
+
+	conn = RunService.RenderStepped:Connect(function(dt)
+		local dir = hum.MoveDirection
+
+		-- 🎮 JOYSTICK = ĐI NHƯ ĐI BỘ (FORWARD / BACK / LEFT / RIGHT)
+		local move =
+			(cam.CFrame.LookVector * dir.Z +
+			 cam.CFrame.RightVector * dir.X) * speed * dt
+
+		cam.CFrame = cam.CFrame + move
+
+		-- 🔍 ZOOM
+		if zoomIn then
+			fov = math.clamp(fov - 1.2, 20, 120)
+			cam.FieldOfView = fov
+		elseif zoomOut then
+			fov = math.clamp(fov + 1.2, 20, 120)
+			cam.FieldOfView = fov
+		end
+	end)
+end
+
+local function stopFreeCam()
+	if conn then conn:Disconnect() end
+	cam.CameraType = Enum.CameraType.Custom
+	cam.FieldOfView = 70
+	if hum then
+		hum.WalkSpeed = 16
+		hum.JumpPower = 50
+		hum.AutoRotate = true
+	end
+end
+
+-- ================= EVENTS =================
+toggle.MouseButton1Click:Connect(function()
+	menu.Visible = not menu.Visible
+end)
+
+camBtn.MouseButton1Click:Connect(function()
+	freecam = not freecam
+	if freecam then
+		camBtn.Text = "🎥 FreeCam: ON"
+		startFreeCam()
+		zoomUp.Visible = true
+		zoomDown.Visible = true
+	else
+		camBtn.Text = "🎥 FreeCam: OFF"
+		stopFreeCam()
+		zoomUp.Visible = false
+		zoomDown.Visible = false
+	end
+end)
+
+speedUp.MouseButton1Click:Connect(function()
+	speed = math.clamp(speed + 10, 10, 150)
+end)
+
+speedDn.MouseButton1Click:Connect(function()
+	speed = math.clamp(speed - 10, 10, 150)
+end)
+
+zoomUp.InputBegan:Connect(function() zoomIn = true end)
+zoomUp.InputEnded:Connect(function() zoomIn = false end)
+zoomDown.InputBegan:Connect(function() zoomOut = true end)
+zoomDown.InputEnded:Connect(function() zoomOut = false end)
+
+-- ✋ VUỐT TAY = XOAY CAM
+UIS.TouchMoved:Connect(function(t)
+	if not freecam then return end
+	if t.Position.X < cam.ViewportSize.X * 0.45 then return end
+
+	yaw -= t.Delta.X * 0.25
+	pitch = math.clamp(pitch - t.Delta.Y * 0.25, -85, 85)
+
+	cam.CFrame =
+		CFrame.new(cam.CFrame.Position)
+		* CFrame.Angles(0, math.rad(yaw), 0)
+		* CFrame.Angles(math.rad(pitch), 0, 0)
+end)
